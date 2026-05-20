@@ -1,0 +1,21 @@
+{
+  "name": "dfs-upside-engine-v1",
+  "version": "1.0.0",
+  "description": "Multi-sport DFS Upside Engine V1 for classic and showdown slates.",
+  "main": "index.js",
+  "type": "module",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "node --watch index.js",
+    "check": "node --check index.js"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.49.1",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2"
+  }
+}
