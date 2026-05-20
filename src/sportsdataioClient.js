@@ -16,7 +16,9 @@ export const SPORTSDATAIO_ENDPOINTS = {
   },
   mlb: {
     slates: "/projections/json/DfsSlatesByDate/{date}",
-    players: "/projections/json/DfsSlatePlayers/{slateId}",
+    // MLB DFS salary/player rows are returned inside DfsSlatesByDate as DfsSlatePlayers.
+    // PlayerGameProjectionStatsByDate also includes DFS salary fields when available.
+    players: null,
     projections: "/projections/json/PlayerGameProjectionStatsByDate/{date}",
     ownership: "/projections/json/DfsOwnershipProjections/{slateId}"
   },
@@ -46,7 +48,22 @@ export const SPORTSDATAIO_ENDPOINTS = {
   }
 };
 
-export function buildSportsDataUrl(sport, endpointKey, params = {}) {
+export class ProviderEndpointError extends Error {
+  constructor({ sport, endpointKey, status, statusText, body, sanitizedPath, sanitizedUrl }) {
+    super(`SportsDataIO ${sport}.${endpointKey} failed: ${status} ${statusText}`);
+    this.name = "ProviderEndpointError";
+    this.provider = "sportsdataio";
+    this.sport = sport;
+    this.endpointKey = endpointKey;
+    this.status = status;
+    this.statusText = statusText;
+    this.body = body;
+    this.sanitizedPath = sanitizedPath;
+    this.sanitizedUrl = sanitizedUrl;
+  }
+}
+
+export function buildSportsDataRequest(sport, endpointKey, params = {}) {
   const apiKey = process.env.SPORTSDATAIO_API_KEY;
   if (!apiKey) throw new Error("SPORTSDATAIO_API_KEY is not configured.");
 
@@ -66,15 +83,37 @@ export function buildSportsDataUrl(sport, endpointKey, params = {}) {
   const path = endpoint.replace(/\{(\w+)\}/g, (_, key) => encodeURIComponent(finalParams[key] ?? ""));
   const url = new URL(`${baseUrl}${path}`);
   url.searchParams.set("key", apiKey);
-  return url.toString();
+  const sanitizedUrl = new URL(`${baseUrl}${path}`);
+
+  return {
+    url: url.toString(),
+    sanitizedUrl: sanitizedUrl.toString(),
+    sanitizedPath: sanitizedUrl.pathname,
+    endpointTemplate: endpoint
+  };
+}
+
+export function buildSportsDataUrl(sport, endpointKey, params = {}) {
+  return buildSportsDataRequest(sport, endpointKey, params).url;
 }
 
 export async function fetchSportsData(sport, endpointKey, params = {}) {
-  const url = buildSportsDataUrl(sport, endpointKey, params);
+  const request = buildSportsDataRequest(sport, endpointKey, params);
+  console.log(`[sportsdataio] GET ${sport}.${endpointKey} ${request.sanitizedPath}`);
+
+  const url = request.url;
   const response = await fetch(url, { headers: { accept: "application/json" } });
   if (!response.ok) {
     const body = await response.text();
-    throw new Error(`SportsDataIO ${sport}.${endpointKey} failed: ${response.status} ${response.statusText} ${body.slice(0, 250)}`);
+    throw new ProviderEndpointError({
+      sport,
+      endpointKey,
+      status: response.status,
+      statusText: response.statusText,
+      body: body.slice(0, 500),
+      sanitizedPath: request.sanitizedPath,
+      sanitizedUrl: request.sanitizedUrl
+    });
   }
   return response.json();
 }
@@ -85,6 +124,11 @@ export async function getSlates(sport, slate_type, site, params = {}) {
 }
 
 export async function getSlatePlayers(sport, slateId, slate_type, site, params = {}) {
+  if (!SPORTSDATAIO_ENDPOINTS[sport]?.players) {
+    console.log(`[sportsdataio] ${sport}.players has no standalone endpoint configured; using slate/projection payloads.`);
+    return [];
+  }
+
   const rows = await fetchSportsData(sport, "players", { ...params, slateId });
   return Array.isArray(rows) ? rows.map((row) => normalizePlayerRow(row, sport, slate_type, site)) : [];
 }
@@ -122,22 +166,32 @@ export function normalizeSlateRow(raw, sport, slate_type, site) {
 }
 
 export function normalizePlayerRow(raw, sport, slate_type, site) {
-  const playerName = raw.Name || raw.PlayerName || raw.FighterName || raw.DriverName || raw.FullName || "Unknown Player";
-  const salary = Number(raw.Salary || raw.OperatorSalary || raw.DraftKingsSalary || raw.FanDuelSalary || 0);
-  const projection = Number(raw.Projection || raw.FantasyPoints || raw.ProjectedFantasyPoints || raw.Points || raw.AverageDraftPosition || 0);
+  const playerName = raw.Name || raw.PlayerName || raw.OperatorPlayerName || raw.FighterName || raw.DriverName || raw.FullName || "Unknown Player";
+  const salary = Number(raw.Salary || raw.OperatorSalary || raw.DraftKingsSalary || raw.FanDuelSalary || raw.YahooSalary || 0);
+  const projection = Number(
+    raw.Projection ||
+    raw.FantasyPoints ||
+    raw.ProjectedFantasyPoints ||
+    raw.FantasyPointsDraftKings ||
+    raw.FantasyPointsFanDuel ||
+    raw.FantasyPointsYahoo ||
+    raw.Points ||
+    raw.AverageDraftPosition ||
+    0
+  );
   const floor = Number(raw.Floor || raw.ProjectedFloor || projection * 0.55 || 0);
   const ceiling = Number(raw.Ceiling || raw.ProjectedCeiling || projection * 1.8 || 0);
 
   return {
-    player_id: String(raw.PlayerID || raw.PlayerId || raw.FighterID || raw.DriverID || raw.ID || playerName),
+    player_id: String(raw.PlayerID || raw.PlayerId || raw.OperatorPlayerID || raw.FighterID || raw.DriverID || raw.ID || playerName),
     player_name: playerName,
     sport,
     slate_type,
     site,
     team: raw.Team || raw.TeamAbbreviation || raw.Country || raw.Manufacturer || null,
     opponent: raw.Opponent || raw.OpponentTeam || raw.OpponentAbbreviation || null,
-    position: raw.Position || raw.RosterPosition || raw.OperatorPosition || inferPosition(raw, sport),
-    roster_slot: raw.RosterPosition || raw.OperatorRosterSlots || raw.Position || inferPosition(raw, sport),
+    position: raw.Position || raw.RosterPosition || raw.OperatorPosition || raw.DraftKingsPosition || raw.FanDuelPosition || inferPosition(raw, sport),
+    roster_slot: raw.RosterPosition || raw.OperatorRosterSlots || raw.OperatorPosition || raw.Position || inferPosition(raw, sport),
     salary,
     projection,
     floor,
@@ -156,6 +210,7 @@ export function mergeProjectionRows(players, projectionRows = []) {
     const keys = [
       row.PlayerID,
       row.PlayerId,
+      row.OperatorPlayerID,
       row.FighterID,
       row.DriverID,
       row.ID,
@@ -171,11 +226,24 @@ export function mergeProjectionRows(players, projectionRows = []) {
     const projection = projectionMap.get(String(player.player_id).toLowerCase()) || projectionMap.get(String(player.player_name).toLowerCase());
     if (!projection) return player;
 
-    const projectedPoints = Number(projection.FantasyPoints || projection.ProjectedFantasyPoints || projection.Projection || player.projection);
+    const projectedPoints = Number(
+      projection.FantasyPointsDraftKings ||
+      projection.FantasyPointsFanDuel ||
+      projection.FantasyPointsYahoo ||
+      projection.FantasyPoints ||
+      projection.ProjectedFantasyPoints ||
+      projection.Projection ||
+      player.projection
+    );
     const floor = Number(projection.Floor || projection.ProjectedFloor || player.floor);
     const ceiling = Number(projection.Ceiling || projection.ProjectedCeiling || player.ceiling);
     return {
       ...player,
+      team: player.team || projection.Team,
+      opponent: player.opponent || projection.Opponent,
+      position: player.position || projection.Position,
+      roster_slot: player.roster_slot || projection.DraftKingsPosition || projection.FanDuelPosition || projection.Position,
+      salary: Number(player.salary || projection.DraftKingsSalary || projection.FanDuelSalary || projection.YahooSalary || projection.OperatorSalary || 0),
       projection: Number.isFinite(projectedPoints) ? projectedPoints : player.projection,
       floor: Number.isFinite(floor) ? floor : player.floor,
       ceiling: Number.isFinite(ceiling) ? ceiling : player.ceiling,

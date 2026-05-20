@@ -76,6 +76,15 @@ src/sportsdataioClient.js
 
 Edit `SPORTSDATAIO_ENDPOINTS` if your SportsDataIO plan uses different paths.
 
+For MLB Classic, the engine uses these SportsDataIO fantasy/projections feeds:
+
+```text
+/v3/mlb/projections/json/DfsSlatesByDate/{date}
+/v3/mlb/projections/json/PlayerGameProjectionStatsByDate/{date}
+```
+
+MLB DFS salaries/player rows are read from `DfsSlatePlayers` embedded in the `DfsSlatesByDate` response. If a slate does not include embedded players, the engine falls back to `PlayerGameProjectionStatsByDate`.
+
 Some non-team sports need extra query values:
 
 - MMA may need `eventId`
@@ -127,6 +136,57 @@ Add `&site=fanduel` or another site when needed. Default site is `draftkings`.
 10. Writes a row to `dfs_scan_logs`.
 
 Every scan logs progress to the console and returns inserted/updated counts in JSON.
+
+## Testing Scan
+
+Start with health and route checks:
+
+```bash
+GET /health
+GET /sports
+GET /slates?sport=mlb&slate_type=classic&site=draftkings&date=2026-05-20
+```
+
+Then run an MLB Classic scan:
+
+```bash
+POST /scan?sport=mlb&slate_type=classic&site=draftkings&date=2026-05-20
+```
+
+Expected success response:
+
+```json
+{
+  "sport": "mlb",
+  "slate_type": "classic",
+  "site": "draftkings",
+  "status": "success",
+  "inserted_or_updated_slates": 1,
+  "inserted_or_updated_players": 100
+}
+```
+
+Provider endpoint failures return clean JSON with the failing endpoint and requested URL without the API key:
+
+```json
+{
+  "error": true,
+  "type": "provider_endpoint_failed",
+  "provider": "sportsdataio",
+  "sport": "mlb",
+  "endpoint": "projections",
+  "requested_path": "/v3/mlb/projections/json/PlayerGameProjectionStatsByDate/2026-05-20",
+  "requested_url_without_key": "https://api.sportsdata.io/v3/mlb/projections/json/PlayerGameProjectionStatsByDate/2026-05-20"
+}
+```
+
+Railway logs will also show sanitized provider request paths:
+
+```text
+[sportsdataio] GET mlb.slates /v3/mlb/projections/json/DfsSlatesByDate/2026-05-20
+[sportsdataio] mlb.players using embedded DfsSlatePlayers from DfsSlatesByDate
+[sportsdataio] GET mlb.projections /v3/mlb/projections/json/PlayerGameProjectionStatsByDate/2026-05-20
+```
 
 ## Universal Player Model
 

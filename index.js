@@ -3,7 +3,7 @@ import express from "express";
 import cors from "cors";
 import { getSupabase, insertScanLog } from "./src/supabaseClient.js";
 import { CONTEST_TYPES, SUPPORTED_SPORTS, contestFitMatches, inferContestType, normalizeSite, normalizeSlateType, normalizeSport } from "./src/contestRules.js";
-import { mergeProjectionRows } from "./src/sportsdataioClient.js";
+import { ProviderEndpointError, mergeProjectionRows } from "./src/sportsdataioClient.js";
 import { applyOwnership } from "./src/ownershipEngine.js";
 import { rankForContest, scorePlayers } from "./src/scoringEngine.js";
 import { calculateShowdownScores } from "./src/showdownEngine.js";
@@ -95,10 +95,11 @@ app.post("/scan", asyncHandler(async (req, res) => {
     if (slateError) throw new Error(`Failed to upsert slate ${slate.slate_id}: ${slateError.message}`);
     insertedSlates += 1;
 
-    const rawPlayers = await adapter.getSlatePlayers(sport, slate.slate_id, slate_type, site, req.query);
+    const adapterParams = { ...req.query, slate, slateRaw: slate.raw };
+    const rawPlayers = await adapter.getSlatePlayers(sport, slate.slate_id, slate_type, site, adapterParams);
     const adaptedPlayers = rawPlayers.map((player) => adapter.normalizePlayerRow(player.raw || player, sport, slate_type, site));
-    const projectionRows = await adapter.getProjections(sport, slate.slate_id, req.query);
-    const ownershipRows = await adapter.getOwnership(sport, slate.slate_id, req.query);
+    const projectionRows = await adapter.getProjections(sport, slate.slate_id, adapterParams);
+    const ownershipRows = await adapter.getOwnership(sport, slate.slate_id, adapterParams);
 
     const projectedPlayers = mergeProjectionRows(adaptedPlayers, projectionRows);
     const ownedPlayers = applyOwnership(projectedPlayers, ownershipRows, { sport, slate_type, site, slateSize: projectedPlayers.length });
@@ -240,6 +241,23 @@ app.delete("/clear-slate", asyncHandler(async (req, res) => {
 
 app.use((err, req, res, next) => {
   console.error(`[error] ${req.method} ${req.path}`, err);
+  if (err instanceof ProviderEndpointError) {
+    return res.status(502).json({
+      error: true,
+      type: "provider_endpoint_failed",
+      provider: err.provider,
+      sport: err.sport,
+      endpoint: err.endpointKey,
+      status: err.status,
+      status_text: err.statusText,
+      requested_path: err.sanitizedPath,
+      requested_url_without_key: err.sanitizedUrl,
+      provider_message: err.body,
+      message: err.message,
+      path: req.path
+    });
+  }
+
   res.status(500).json({
     error: true,
     message: err.message || "Unexpected server error",
