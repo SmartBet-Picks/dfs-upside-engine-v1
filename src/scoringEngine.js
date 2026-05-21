@@ -81,7 +81,7 @@ export function calculatePlayerScores(player, slateContext = {}) {
     large_field_grade: gradeField(upsideScore, leverageScore, volatilityScore, fakeChalk, "large"),
     fake_chalk_warning: fakeChalk.warning,
     fake_chalk_reason: fakeChalk.reason,
-    slate_breaker_tag: ceilingScore >= 82 && boomPct >= 28 && upsideScore >= 72
+    slate_breaker_tag: ceiling >= ceilingMark * 1.35 && boomPct >= 28 && upsideScore >= 72 && leverageScore >= 68
   };
 }
 

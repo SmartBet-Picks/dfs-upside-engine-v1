@@ -150,16 +150,16 @@ export function mergeProjectionRows(players, projectionRows = []) {
 
 async function loadPlayerSeedRows(sport, site, params) {
   const manualRows = extractManualRows(params);
-  if (manualRows.length) return manualRows;
+  if (manualRows.length) return dedupeSalaryRows(manualRows);
 
   const salaryRows = await loadPublicRows(`${sport.toUpperCase()}_${site.toUpperCase()}_SALARIES_URL`, params, null);
-  if (Array.isArray(salaryRows) && salaryRows.length) return salaryRows;
+  if (Array.isArray(salaryRows) && salaryRows.length) return dedupeSalaryRows(salaryRows);
 
   const genericSalaryRows = await loadPublicRows(`${sport.toUpperCase()}_SALARIES_URL`, params, null);
-  if (Array.isArray(genericSalaryRows) && genericSalaryRows.length) return genericSalaryRows;
+  if (Array.isArray(genericSalaryRows) && genericSalaryRows.length) return dedupeSalaryRows(genericSalaryRows);
 
   const tankRows = await loadTank01Rows(sport, params);
-  if (tankRows.length) return tankRows;
+  if (tankRows.length) return dedupeSalaryRows(tankRows);
 
   return [];
 }
@@ -260,6 +260,73 @@ function extractManualRows(params) {
   if (Array.isArray(params.players)) return params.players;
   if (Array.isArray(params.salaries)) return params.salaries;
   return [];
+}
+
+function dedupeSalaryRows(rows) {
+  const grouped = new Map();
+  for (const row of rows) {
+    const key = salaryDedupeKey(row);
+    const existing = grouped.get(key);
+    if (!existing) {
+      grouped.set(key, normalizeSalarySeed(row, key));
+      continue;
+    }
+
+    grouped.set(key, mergeSalarySeed(existing, row, key));
+  }
+  return [...grouped.values()];
+}
+
+function normalizeSalarySeed(row, key) {
+  return {
+    ...row,
+    PlayerID: row.PlayerID || row.PlayerId || row.playerID || row.playerId || row.id || key,
+    RosterPosition: baseRosterPosition(row),
+    Salary: Number(row.Salary || row.salary || row.DraftKingsSalary || row.draftKingsSalary || 0),
+    raw_salary_rows: [row]
+  };
+}
+
+function mergeSalarySeed(existing, next, key) {
+  const nextSalary = Number(next.Salary || next.salary || next.DraftKingsSalary || next.draftKingsSalary || 0);
+  const existingSalary = Number(existing.Salary || existing.salary || 0);
+  const preferNext = shouldPreferBaseSalaryRow(next, nextSalary, existing, existingSalary);
+  const base = preferNext ? next : existing;
+  const salary = preferNext ? nextSalary : existingSalary;
+  const rawRows = [...(existing.raw_salary_rows || []), next];
+
+  return {
+    ...existing,
+    ...base,
+    PlayerID: existing.PlayerID || base.PlayerID || key,
+    RosterPosition: baseRosterPosition(base),
+    Salary: salary,
+    captain_salary: Math.max(existingSalary, nextSalary),
+    flex_salary: Math.min(...rawRows.map((row) => Number(row.Salary || row.salary || row.DraftKingsSalary || row.draftKingsSalary || 0)).filter((value) => value > 0)),
+    raw_salary_rows: rawRows
+  };
+}
+
+function shouldPreferBaseSalaryRow(next, nextSalary, existing, existingSalary) {
+  const nextSlot = String(next.RosterPosition || next["Roster Position"] || next.Position || next.position || "").toUpperCase();
+  const existingSlot = String(existing.RosterPosition || existing["Roster Position"] || existing.Position || existing.position || "").toUpperCase();
+  if (nextSlot.includes("CPT") || nextSlot.includes("CAPTAIN")) return false;
+  if (existingSlot.includes("CPT") || existingSlot.includes("CAPTAIN")) return true;
+  if (nextSalary > 0 && existingSalary > 0) return nextSalary < existingSalary;
+  return nextSalary > 0;
+}
+
+function salaryDedupeKey(row) {
+  const name = String(row.Name || row.PlayerName || row.playerName || row.longName || row.fullName || row.name || "").trim().toLowerCase();
+  const team = String(row.Team || row.TeamAbbrev || row.team || row.teamAbv || row.teamAbbr || "").trim().toLowerCase();
+  const game = String(row["Game Info"] || row.GameInfo || row.gameInfo || row.Opponent || row.opponent || "").trim().toLowerCase();
+  return [name, team, game].filter(Boolean).join("|") || String(row.PlayerID || row.PlayerId || row.id || Math.random());
+}
+
+function baseRosterPosition(row) {
+  const slot = String(row.RosterPosition || row["Roster Position"] || row.rosterSlot || "").toUpperCase();
+  if (slot.includes("CPT") || slot.includes("CAPTAIN")) return "FLEX";
+  return row.RosterPosition || row["Roster Position"] || row.rosterSlot || row.Position || row.position || "UTIL";
 }
 
 function extractRows(payload) {

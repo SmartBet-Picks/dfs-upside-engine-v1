@@ -90,14 +90,17 @@ function gameScriptFit(player) {
 
 function showdownTag(player, captainScore, flexScore, ownership, leverage) {
   const singleEntry = String(player.single_entry_grade || "").includes("Core") || String(player.single_entry_grade || "").includes("Strong");
-  if (singleEntry && captainScore >= 72) return "Single Entry Captain";
-  if (singleEntry && flexScore >= 62) return "Single Entry Flex";
   if (ownership >= 35 && captainScore < 72) return "Too Chalky Captain";
-  if (captainScore >= 80) return "Captain Core";
+  if (singleEntry && captainScore >= 76) return "Single Entry Captain";
+  if (captainScore >= 82) return "Captain Core";
   if (captainScore >= 68 && leverage >= 65) return "Captain Leverage";
   if (captainScore >= 58 && ownership <= 10) return "Large-Field Captain Dart";
-  if (flexScore >= 72) return "Flex Core";
-  if (flexScore >= 60 && safeNum(player.salary_value_score) >= 65) return "Flex Value";
+  if (singleEntry && flexScore >= 72 && ownership <= 32) return "Single Entry Flex";
+  if (flexScore >= 82) return "Flex Core";
+  if (flexScore >= 64 && safeNum(player.salary_value_score) >= 80 && ownership <= 30) return "Flex Value";
+  if (leverage >= 74 && ownership <= 24) return "Tournament Leverage";
+  if (safeNum(player.salary) <= 2500 && safeNum(player.projection) >= 12) return "Salary Relief";
   if (flexScore >= 56 && safeNum(player.volatility_score) <= 55) return "Small-Field Flex Safe";
+  if (ownership >= 32) return "Popular Flex";
   return "Showdown Pool";
 }
