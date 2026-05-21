@@ -3,7 +3,7 @@ import express from "express";
 import cors from "cors";
 import { getSupabase, insertScanLog } from "./src/supabaseClient.js";
 import { CONTEST_TYPES, SUPPORTED_SPORTS, contestFitMatches, inferContestType, normalizeSite, normalizeSlateType, normalizeSport } from "./src/contestRules.js";
-import { ProviderEndpointError, mergeProjectionRows } from "./src/sportsdataioClient.js";
+import { LegalDataSourceError, sourceHealth, mergeProjectionRows, validateLegalDataSources } from "./src/legalDataClient.js";
 import { applyOwnership } from "./src/ownershipEngine.js";
 import { rankForContest, scorePlayers } from "./src/scoringEngine.js";
 import { calculateShowdownScores } from "./src/showdownEngine.js";
@@ -21,7 +21,7 @@ app.get("/", (req, res) => {
     name: "DFS Upside Engine V1",
     status: "online",
     mode: "DFS-only",
-    provider: "SportsDataIO",
+    provider: "Internal legal-data model",
     sports: SUPPORTED_SPORTS,
     routes: [
       "GET /dashboard",
@@ -48,11 +48,12 @@ app.get("/dashboard", (req, res) => {
 
 app.get("/health", (req, res) => {
   res.json({
-    ok: true,
-    service: "dfs-upside-engine-v1",
-    timestamp: new Date().toISOString(),
-    sportsdataio_configured: Boolean(process.env.SPORTSDATAIO_API_KEY),
-    supabase_configured: Boolean(process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_ROLE_KEY)
+    nfl: sourceHealth.nfl === "failed" ? "failed" : "ok",
+    mlb: sourceHealth.mlb === "failed" ? "failed" : "ok",
+    nba: sourceHealth.nba === "failed" ? "failed" : "ok",
+    mma: sourceHealth.mma === "failed" ? "failed" : "ok",
+    golf: sourceHealth.golf === "failed" ? "failed" : "ok",
+    nascar: sourceHealth.nascar === "failed" ? "failed" : "ok"
   });
 });
 
@@ -78,9 +79,10 @@ app.post("/scan", asyncHandler(async (req, res) => {
   const supabase = getSupabase();
 
   console.log(`[scan] Starting ${sport} ${slate_type} ${site}`);
-  const slates = await adapter.getSlates(sport, slate_type, site, req.query);
+  const adapterParams = { ...req.query, body: req.body };
+  const slates = await adapter.getSlates(sport, slate_type, site, adapterParams);
   if (!slates.length) {
-    const message = "No slates returned by SportsDataIO. Check endpoint constants, date/event/race/tournament params, and subscription access.";
+    const message = "No slate seed data returned by configured legal data sources. Check Tank01/public salary feeds, request body players, and API keys.";
     console.log(`[scan] ${message}`);
     await insertScanLog({ sport, slate_type, status: "empty", message, players_processed: 0 });
     return res.json({ sport, slate_type, site, status: "empty", message, inserted_slates: 0, upserted_players: 0 });
@@ -101,7 +103,7 @@ app.post("/scan", asyncHandler(async (req, res) => {
     if (slateError) throw new Error(`Failed to upsert slate ${slate.slate_id}: ${slateError.message}`);
     insertedSlates += 1;
 
-    const adapterParams = { ...req.query, slate, slateRaw: slate.raw };
+    const adapterParams = { ...req.query, body: req.body, slate, slateRaw: slate.raw, site };
     const rawPlayers = await adapter.getSlatePlayers(sport, slate.slate_id, slate_type, site, adapterParams);
     const adaptedPlayers = rawPlayers.map((player) => adapter.normalizePlayerRow(player.raw || player, sport, slate_type, site));
     const projectionRows = await adapter.getProjections(sport, slate.slate_id, adapterParams);
@@ -247,18 +249,14 @@ app.delete("/clear-slate", asyncHandler(async (req, res) => {
 
 app.use((err, req, res, next) => {
   console.error(`[error] ${req.method} ${req.path}`, err);
-  if (err instanceof ProviderEndpointError) {
+  if (err instanceof LegalDataSourceError) {
     return res.status(502).json({
       error: true,
-      type: "provider_endpoint_failed",
-      provider: err.provider,
+      type: "legal_data_source_failed",
+      provider: err.source,
       sport: err.sport,
-      endpoint: err.endpointKey,
       status: err.status,
       status_text: err.statusText,
-      requested_path: err.sanitizedPath,
-      requested_url_without_key: err.sanitizedUrl,
-      provider_message: err.body,
       message: err.message,
       path: req.path
     });
@@ -273,6 +271,9 @@ app.use((err, req, res, next) => {
 
 app.listen(port, () => {
   console.log(`DFS Upside Engine V1 running on port ${port}`);
+  validateLegalDataSources().catch((error) => {
+    console.warn(`[legal-data] startup validation failed safely: ${error.message}`);
+  });
 });
 
 function asyncHandler(handler) {
@@ -335,6 +336,7 @@ function toDbPlayer(player) {
     boom_pct: player.boom_pct,
     bust_pct: player.bust_pct,
     ownership: player.ownership,
+    estimated_ownership: player.estimated_ownership || (player.ownership_source === "estimated" ? player.ownership : null),
     ownership_source: player.ownership_source,
     volatility_score: player.volatility_score,
     salary_value_score: player.salary_value_score,

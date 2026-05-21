@@ -4,7 +4,7 @@ create table if not exists dfs_slates (
   id uuid primary key default gen_random_uuid(),
   sport text not null,
   slate_type text not null,
-  provider text not null default 'sportsdataio',
+  provider text not null default 'internal_model',
   site text not null,
   slate_id text not null,
   slate_name text,
@@ -37,6 +37,7 @@ create table if not exists dfs_players (
   boom_pct numeric,
   bust_pct numeric,
   ownership numeric,
+  estimated_ownership numeric,
   ownership_source text,
   volatility_score numeric,
   salary_value_score numeric,
@@ -58,6 +59,9 @@ create table if not exists dfs_players (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+
+alter table dfs_players
+add column if not exists estimated_ownership numeric;
 
 create unique index if not exists dfs_players_unique_slate_player_slot
 on dfs_players (slate_id, site, player_id, roster_slot);

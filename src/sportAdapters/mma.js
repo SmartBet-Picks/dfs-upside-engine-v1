@@ -1,4 +1,4 @@
-import { getSlates as baseGetSlates, getSlatePlayers as baseGetSlatePlayers, getProjections as baseGetProjections, getOwnership as baseGetOwnership, normalizePlayerRow as baseNormalizePlayerRow } from "../sportsdataioClient.js";
+import { getSlates as baseGetSlates, getSlatePlayers as baseGetSlatePlayers, getProjections as baseGetProjections, getOwnership as baseGetOwnership, normalizePlayerRow as baseNormalizePlayerRow } from "../legalDataClient.js";
 
 export const getSlates = (sport, slate_type, site, params) => baseGetSlates("mma", slate_type, site, params);
 export const getSlatePlayers = (sport, slateId, slate_type, site, params) => baseGetSlatePlayers("mma", slateId, slate_type, site, params);

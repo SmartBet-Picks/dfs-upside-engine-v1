@@ -16,7 +16,7 @@ export function applyOwnership(players, providerOwnershipRows = [], slateContext
       return { ...player, ownership: clamp(player.ownership), ownership_source: player.ownership_source || "provider" };
     }
 
-    return { ...player, ownership: estimated[index], ownership_source: "estimated" };
+    return { ...player, ownership: estimated[index], estimated_ownership: estimated[index], ownership_source: "estimated" };
   });
 }
 
@@ -38,15 +38,19 @@ export function estimateOwnership(players, slateContext = {}) {
     const scarcityScore = 100 / Math.max(positionCounts[player.position || "UNK"] || slateSize, 1);
     const nameProxy = popularityProxy(player.player_name);
     const roleBoost = roleProxy(player);
+    const recentScore = recentPerformanceProxy(player);
+    const injuryNewsBoost = injuryNewsRoleBoost(player);
     const slateSizeDiscount = slateSize >= 120 ? 0.7 : slateSize >= 70 ? 0.82 : slateSize >= 35 ? 1 : 1.15;
 
     const estimated = (
-      salaryScore * 0.22 +
-      projectionScore * 0.34 +
-      valueScore * 0.24 +
+      salaryScore * 0.18 +
+      projectionScore * 0.28 +
+      valueScore * 0.20 +
+      recentScore * 0.10 +
       scarcityScore * 0.08 +
       nameProxy * 0.06 +
-      roleBoost * 0.06
+      roleBoost * 0.06 +
+      injuryNewsBoost * 0.04
     ) * slateSizeDiscount;
 
     return Number(clamp(estimated, 1, 55).toFixed(2));
@@ -93,4 +97,25 @@ function roleProxy(player) {
   if (raw.includes("injury") && raw.includes("out")) score -= 40;
   if (raw.includes("lineup") || raw.includes("usage") || raw.includes("minutes")) score += 15;
   return clamp(score + 35);
+}
+
+function recentPerformanceProxy(player) {
+  const raw = player.raw || {};
+  const model = raw.model || raw.projection?.model_inputs || {};
+  const recent = model.recent || raw.recent || {};
+  const projection = safeNum(player.projection);
+  const recentAverage = safeNum(recent.average || raw.recentAverage || raw.last5Average, projection);
+  const trend = safeNum(recent.trend || raw.trend, 0);
+  if (!projection) return 40;
+  return clamp((recentAverage / Math.max(projection, 1)) * 55 + trend * 3 + 35);
+}
+
+function injuryNewsRoleBoost(player) {
+  const raw = JSON.stringify(player.raw || {}).toLowerCase();
+  let score = 35;
+  if (raw.includes("out") && (raw.includes("teammate") || raw.includes("role") || raw.includes("usage"))) score += 30;
+  if (raw.includes("starting") || raw.includes("promoted") || raw.includes("expected minutes")) score += 20;
+  if (raw.includes("questionable") || raw.includes("limited") || raw.includes("minutes limit")) score -= 22;
+  if (raw.includes("doubtful") || raw.includes("\"out\"")) score -= 38;
+  return clamp(score);
 }

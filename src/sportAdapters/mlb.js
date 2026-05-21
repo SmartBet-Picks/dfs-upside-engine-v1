@@ -1,24 +1,11 @@
-import { getSlates as baseGetSlates, getProjections as baseGetProjections, getOwnership as baseGetOwnership, normalizePlayerRow as baseNormalizePlayerRow } from "../sportsdataioClient.js";
+import { getSlates as baseGetSlates, getSlatePlayers as baseGetSlatePlayers, getProjections as baseGetProjections, getOwnership as baseGetOwnership, normalizePlayerRow as baseNormalizePlayerRow } from "../legalDataClient.js";
 
 export const stackCorrelationPlaceholders = ["team stack", "mini stack", "wraparound stack", "pitcher leverage against chalk stack"];
 
 export const getSlates = (sport, slate_type, site, params) => baseGetSlates("mlb", slate_type, site, params);
+export const getSlatePlayers = (sport, slateId, slate_type, site, params) => baseGetSlatePlayers("mlb", slateId, slate_type, site, params);
 export const getProjections = (sport, slateId, params) => baseGetProjections("mlb", slateId, params);
 export const getOwnership = (sport, slateId, params) => baseGetOwnership("mlb", slateId, params);
-
-export async function getSlatePlayers(sport, slateId, slate_type, site, params = {}) {
-  const rawSlate = params.slate?.raw || params.slateRaw;
-  const embeddedPlayers = extractEmbeddedSlatePlayers(rawSlate);
-
-  if (embeddedPlayers.length) {
-    console.log(`[sportsdataio] mlb.players using ${embeddedPlayers.length} embedded DfsSlatePlayers from DfsSlatesByDate slate ${slateId}`);
-    return embeddedPlayers.map((row) => normalizePlayerRow(row, "mlb", slate_type, site));
-  }
-
-  console.log(`[sportsdataio] mlb.players no embedded DfsSlatePlayers found for slate ${slateId}; using PlayerGameProjectionStatsByDate fallback`);
-  const projectionRows = await getProjections("mlb", slateId, params);
-  return projectionRows.map((row) => normalizePlayerRow(row, "mlb", slate_type, site));
-}
 
 export function normalizePlayerRow(raw, sport = "mlb", slate_type = "classic", site = "draftkings") {
   const player = baseNormalizePlayerRow(raw, sport, slate_type, site);
@@ -47,16 +34,4 @@ export function normalizePlayerRow(raw, sport = "mlb", slate_type = "classic", s
     game_script_fit: "Power and stack correlation path",
     raw: { ...player.raw, stack_correlation_placeholders: stackCorrelationPlaceholders }
   };
-}
-
-function extractEmbeddedSlatePlayers(rawSlate) {
-  if (!rawSlate) return [];
-
-  const directPlayers = rawSlate.DfsSlatePlayers || rawSlate.SlatePlayers || rawSlate.Players || rawSlate.dfs_slate_players;
-  if (Array.isArray(directPlayers)) return directPlayers;
-
-  const slateGames = rawSlate.DfsSlateGames || rawSlate.SlateGames || rawSlate.Games || [];
-  if (!Array.isArray(slateGames)) return [];
-
-  return slateGames.flatMap((game) => game.DfsSlatePlayers || game.SlatePlayers || game.Players || []);
 }

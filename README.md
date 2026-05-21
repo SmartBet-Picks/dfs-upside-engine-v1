@@ -1,24 +1,43 @@
 # DFS Upside Engine V1
 
-Standalone multi-sport DFS engine for NFL, MLB, NBA, MMA, Golf, and NASCAR.
+Standalone multi-sport DFS engine for NFL, MLB, NBA, MMA/UFC, Golf, and NASCAR.
 
-This is DFS-only. It does not connect to SmartBet and does not use betting-pick, moneyline, or sportsbook logic.
+This is DFS-only. It does not use betting-pick logic, sportsbooks as recommendations, paid DFS scraping, or protected DFS content.
 
-## Features
+## Data Policy
 
-- Classic slates
-- Showdown / single-game slates
-- Single Entry contests
-- Small-field GPP
-- Mid-field GPP
-- Large-field GPP
-- Mini-MAX
-- Winner Take All
-- JSON API first
-- Dashboard-ready later
-- SportsDataIO primary provider
-- Supabase persistence
-- Railway-ready Express server
+Allowed sources:
+
+- Tank01 API
+- The Odds API
+- Historical game logs from legal API/public JSON feeds
+- Injury/news feeds from legal API/public JSON feeds
+- DFS salary files or salary APIs you are legally allowed to use
+- Request-body seed data supplied by your own backend/admin tools
+
+Blocked sources:
+
+- Paid DFS site scraping
+- Protected Stokastic, RotoGrinders, SaberSim, FantasyLabs, or paid-tool content
+- Single-vendor paid sports feed dependency
+
+## Model Outputs
+
+The engine generates:
+
+- `projection`
+- `floor`
+- `ceiling`
+- `boom_pct`
+- `bust_pct`
+- `estimated_ownership`
+- `upside_score`
+- `leverage_score`
+- `fake_chalk_warning`
+- `single_entry_grade`
+- `contest_fit_tag`
+
+It also preserves existing DFS logic for Top Upside, Leverage, Fake Chalk, Single Entry, Contest Fit, Showdown Captains, and Showdown Flex.
 
 ## Stack
 
@@ -26,78 +45,112 @@ This is DFS-only. It does not connect to SmartBet and does not use betting-pick,
 - Express
 - Supabase
 - Railway
-- SportsDataIO API
+- Internal legal-data projection model
 
 ## Setup
 
-1. Install dependencies:
+Install dependencies:
 
 ```bash
 npm install
 ```
 
-2. Create `.env` from `.env.example`:
+Create `.env` from `.env.example`:
 
-```bash
-SPORTSDATAIO_API_KEY=
+```env
 SUPABASE_URL=
 SUPABASE_SERVICE_ROLE_KEY=
 PORT=3000
+TANK01_RAPIDAPI_KEY=
+TANK01_RAPIDAPI_HOST=
+ODDS_API_KEY=
+TANK01_PLAYERS_URL=
+NFL_DRAFTKINGS_SALARIES_URL=
+MLB_DRAFTKINGS_SALARIES_URL=
+NBA_DRAFTKINGS_SALARIES_URL=
+MMA_DRAFTKINGS_SALARIES_URL=
+GOLF_DRAFTKINGS_SALARIES_URL=
+NASCAR_DRAFTKINGS_SALARIES_URL=
+NFL_INJURIES_URL=
+MLB_INJURIES_URL=
+NBA_INJURIES_URL=
+MMA_INJURIES_URL=
+GOLF_INJURIES_URL=
+NASCAR_INJURIES_URL=
+NFL_GAME_LOGS_URL=
+MLB_GAME_LOGS_URL=
+NBA_GAME_LOGS_URL=
+MMA_GAME_LOGS_URL=
+GOLF_GAME_LOGS_URL=
+NASCAR_GAME_LOGS_URL=
 ```
 
-3. Create the Supabase tables:
+Run `sql/schema.sql` in Supabase. Existing installs should re-run it so `dfs_players.estimated_ownership` is added.
 
-Open Supabase SQL Editor and run:
-
-```sql
--- paste sql/schema.sql here
-```
-
-4. Start locally:
+Start locally:
 
 ```bash
 npm run dev
 ```
 
-5. Deploy to Railway:
-
-- Create a new Railway project.
-- Connect this GitHub repo.
-- Add the same environment variables.
-- Railway should run `npm start`.
-
-## SportsDataIO Endpoints
-
-SportsDataIO endpoint paths can differ by sport, product tier, and subscription access. All endpoint paths are intentionally centralized in:
-
-```text
-src/sportsdataioClient.js
-```
-
-Edit `SPORTSDATAIO_ENDPOINTS` if your SportsDataIO plan uses different paths.
-
-For MLB Classic, the engine uses these SportsDataIO fantasy/projections feeds:
-
-```text
-/v3/mlb/projections/json/DfsSlatesByDate/{date}
-/v3/mlb/projections/json/PlayerGameProjectionStatsByDate/{date}
-```
-
-MLB DFS salaries/player rows are read from `DfsSlatePlayers` embedded in the `DfsSlatesByDate` response. If a slate does not include embedded players, the engine falls back to `PlayerGameProjectionStatsByDate`.
-
-Some non-team sports need extra query values:
-
-- MMA may need `eventId`
-- Golf may need `tournamentId`
-- NASCAR may need `raceId`
-
-Example:
+Railway should run:
 
 ```bash
-POST /scan?sport=golf&slate_type=classic&site=draftkings&tournamentId=123
-POST /scan?sport=nascar&slate_type=classic&site=draftkings&raceId=123
-POST /scan?sport=mma&slate_type=classic&site=draftkings&eventId=123
+npm start
 ```
+
+## Legal Feed Configuration
+
+The backend can load player/salary seed rows from:
+
+1. POST body `players` or `salaries`.
+2. Sport/site salary feed URLs such as `NBA_DRAFTKINGS_SALARIES_URL`.
+3. Generic sport salary URLs such as `NBA_SALARIES_URL`.
+4. Tank01 URL templates.
+
+URL templates may include query placeholders:
+
+```env
+NBA_DRAFTKINGS_SALARIES_URL=https://your-legal-feed.example/nba/dk-salaries.json?date={date}
+NBA_INJURIES_URL=https://your-legal-feed.example/nba/injuries.json
+NBA_GAME_LOGS_URL=https://your-legal-feed.example/nba/game-logs.json?date={date}
+```
+
+Tank01 can be configured with either one generic template or per-sport templates:
+
+```env
+TANK01_PLAYERS_URL=https://your-tank01-endpoint.example/players?sport={sport}&date={date}
+NBA_TANK01_PLAYERS_URL=https://your-tank01-endpoint.example/nba/players?date={date}
+```
+
+If a feed is missing or fails, the route returns an empty array or empty scan result instead of crashing.
+
+## Scan Example
+
+You can seed a scan with your own legal player data:
+
+```bash
+POST /scan?sport=nba&slate_type=showdown&site=draftkings&date=2026-05-21
+Content-Type: application/json
+
+{
+  "players": [
+    {
+      "PlayerID": "nba-1",
+      "PlayerName": "Example Player",
+      "Team": "DAL",
+      "Opponent": "OKC",
+      "Position": "PG",
+      "Salary": 10400,
+      "avgFantasyPoints": 48.2,
+      "last5Average": 51.4,
+      "roleBoost": 2
+    }
+  ]
+}
+```
+
+The engine calculates projections, floor, ceiling, boom/bust rates, estimated ownership, upside, leverage, fake chalk, and contest tags from the legal seed data.
 
 ## Routes
 
@@ -118,171 +171,39 @@ GET /showdown-flex?sport=nfl&slate_type=showdown
 DELETE /clear-slate?sport=mlb&slate_type=classic
 ```
 
-Add `&site=fanduel` or another site when needed. Default site is `draftkings`.
+## Ownership Model
 
-## Scan Flow
+When real ownership is unavailable, the engine estimates ownership from:
 
-`POST /scan` does this:
+- salary rank
+- projection rank
+- value rank
+- recent performance
+- injury/news role boost
+- slate size
+- position scarcity
+- name popularity proxy
 
-1. Fetches SportsDataIO slates.
-2. Upserts each slate into `dfs_slates`.
-3. Fetches slate players.
-4. Fetches projections when available.
-5. Fetches ownership when available.
-6. Estimates ownership when provider ownership is missing.
-7. Calculates DFS upside, leverage, salary value, volatility, contest fit, field-size fit, fake chalk, and Single Entry grades.
-8. Calculates showdown captain/flex scores when `slate_type=showdown`.
-9. Upserts players into `dfs_players`.
-10. Writes a row to `dfs_scan_logs`.
+## Health
 
-Every scan logs progress to the console and returns inserted/updated counts in JSON.
-
-## Testing Scan
-
-Start with health and route checks:
-
-```bash
-GET /health
-GET /sports
-GET /slates?sport=mlb&slate_type=classic&site=draftkings&date=2026-05-20
-```
-
-Then run an MLB Classic scan:
-
-```bash
-POST /scan?sport=mlb&slate_type=classic&site=draftkings&date=2026-05-20
-```
-
-Expected success response:
+`GET /health` returns:
 
 ```json
 {
-  "sport": "mlb",
-  "slate_type": "classic",
-  "site": "draftkings",
-  "status": "success",
-  "inserted_or_updated_slates": 1,
-  "inserted_or_updated_players": 100
+  "nfl": "ok",
+  "mlb": "ok",
+  "nba": "ok",
+  "mma": "ok",
+  "golf": "ok",
+  "nascar": "ok"
 }
 ```
 
-Provider endpoint failures return clean JSON with the failing endpoint and requested URL without the API key:
+## Supported Sports
 
-```json
-{
-  "error": true,
-  "type": "provider_endpoint_failed",
-  "provider": "sportsdataio",
-  "sport": "mlb",
-  "endpoint": "projections",
-  "requested_path": "/v3/mlb/projections/json/PlayerGameProjectionStatsByDate/2026-05-20",
-  "requested_url_without_key": "https://api.sportsdata.io/v3/mlb/projections/json/PlayerGameProjectionStatsByDate/2026-05-20"
-}
-```
-
-Railway logs will also show sanitized provider request paths:
-
-```text
-[sportsdataio] GET mlb.slates /v3/mlb/projections/json/DfsSlatesByDate/2026-05-20
-[sportsdataio] mlb.players using embedded DfsSlatePlayers from DfsSlatesByDate
-[sportsdataio] GET mlb.projections /v3/mlb/projections/json/PlayerGameProjectionStatsByDate/2026-05-20
-```
-
-## Universal Player Model
-
-Every sport normalizes into:
-
-```text
-player_name
-sport
-slate_type
-site
-team
-opponent
-position
-salary
-projection
-floor
-ceiling
-boom_pct
-bust_pct
-ownership
-ownership_source
-```
-
-## Scoring Outputs
-
-The engine calculates:
-
-```text
-salary_value_score
-volatility_score
-upside_score
-leverage_score
-contest_fit_tag
-recommended_field_size
-single_entry_grade
-small_field_grade
-large_field_grade
-fake_chalk_warning
-fake_chalk_reason
-slate_breaker_tag
-```
-
-Showdown mode also calculates:
-
-```text
-showdown_captain_score
-showdown_flex_score
-captain_ownership_risk
-duplication_risk
-game_script_fit
-```
-
-## Contest Types
-
-Supported contest logic:
-
-- Cash
-- Single Entry
-- Small-Field GPP
-- Mid-Field GPP
-- Large-Field GPP
-- Mini-MAX
-- Winner Take All
-
-Single Entry tags:
-
-- Single Entry Core
-- Single Entry Strong Play
-- Single Entry Leverage
-- Single Entry Risky
-- Not For Single Entry
-
-Recommended field sizes:
-
-- 50-500
-- 500-2,000
-- 2,000-10,000
-- 10,000-50,000
-- 50k+
-
-Showdown tags:
-
-- Captain Core
-- Captain Leverage
-- Flex Core
-- Flex Value
-- Too Chalky Captain
-- Large-Field Captain Dart
-- Small-Field Flex Safe
-- Single Entry Captain
-- Single Entry Flex
-
-## Important Notes
-
-- Do not hardcode API keys.
-- Keep SportsDataIO endpoint changes inside `src/sportsdataioClient.js`.
-- This project is completely separate from SmartBet.
-- This project is DFS-only.
-- The dashboard can be added later on top of these JSON routes.
+- NFL
+- MLB
+- NBA
+- MMA/UFC
+- Golf
+- NASCAR

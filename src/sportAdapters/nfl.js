@@ -1,4 +1,4 @@
-import { getSlates as baseGetSlates, getSlatePlayers as baseGetSlatePlayers, getProjections as baseGetProjections, getOwnership as baseGetOwnership, normalizePlayerRow as baseNormalizePlayerRow } from "../sportsdataioClient.js";
+import { getSlates as baseGetSlates, getSlatePlayers as baseGetSlatePlayers, getProjections as baseGetProjections, getOwnership as baseGetOwnership, normalizePlayerRow as baseNormalizePlayerRow } from "../legalDataClient.js";
 
 export const stackCorrelationPlaceholders = ["QB-WR", "QB-TE", "QB-pass-catcher bring-back", "RB-defense"];
 
