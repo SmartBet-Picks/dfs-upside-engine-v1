@@ -1,4 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
+import ws from "ws";
 
 const { SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY } = process.env;
 
@@ -11,6 +12,9 @@ export function getSupabase() {
     auth: {
       persistSession: false,
       autoRefreshToken: false
+    },
+    realtime: {
+      transport: ws
     }
   });
 }
