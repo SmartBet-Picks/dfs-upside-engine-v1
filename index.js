@@ -14,6 +14,7 @@ const port = Number(process.env.PORT || 3000);
 
 app.use(cors());
 app.use(express.json({ limit: "1mb" }));
+app.use("/public", express.static("public"));
 
 app.get("/", (req, res) => {
   res.json({
@@ -23,6 +24,7 @@ app.get("/", (req, res) => {
     provider: "SportsDataIO",
     sports: SUPPORTED_SPORTS,
     routes: [
+      "GET /dashboard",
       "GET /health",
       "GET /sports",
       "GET /slates?sport=mlb&slate_type=classic",
@@ -38,6 +40,10 @@ app.get("/", (req, res) => {
       "DELETE /clear-slate?sport=mlb&slate_type=classic"
     ]
   });
+});
+
+app.get("/dashboard", (req, res) => {
+  res.sendFile("dashboard.html", { root: "public" });
 });
 
 app.get("/health", (req, res) => {
