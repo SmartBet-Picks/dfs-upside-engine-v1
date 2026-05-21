@@ -221,10 +221,10 @@ function buildProjectionRow(row, context) {
   const roleBoost = roleBoostFromRow(row) + injury.roleBoost;
   const volatility = volatilityFromRecent(recent);
   const projection = Math.max(0, base * injury.availabilityMultiplier + marketBoost + roleBoost);
-  const floor = Math.max(0, projection * (0.48 + recent.stability * 0.18) - volatility * 0.18);
-  const ceiling = Math.max(projection, projection * (1.45 + volatility * 0.015) + marketBoost * 1.4 + roleBoost * 1.2);
-  const boomPct = clamp(12 + ((ceiling / Math.max(projection, 1)) - 1) * 30 + marketBoost * 0.8 + recent.trend * 1.5);
-  const bustPct = clamp(18 + volatility * 1.3 - recent.stability * 18 + injury.bustBoost);
+  const floor = Math.max(0, projection * (0.54 + recent.stability * 0.16) - volatility * 0.08);
+  const ceiling = Math.max(projection, projection * (1.34 + volatility * 0.01) + marketBoost * 1.15 + roleBoost * 0.9);
+  const boomPct = clamp(10 + ((ceiling / Math.max(projection, 1)) - 1) * 24 + marketBoost * 0.6 + recent.trend * 1.1, 4, 42);
+  const bustPct = clamp(16 + volatility * 0.75 - recent.stability * 16 + injury.bustBoost, 5, 58);
 
   return {
     ...row,
@@ -309,7 +309,7 @@ function recentPerformance(row, gameLogRows) {
   const scores = logs.map((log) => Number(log.FantasyPoints || log.fantasyPoints || log.dkPoints || log.fdPoints || log.points)).filter(Number.isFinite);
   if (!scores.length) {
     const fallback = Number(row.avgFantasyPoints || row.fantasyPoints || row.FantasyPoints || row.Projection || 0);
-    return { average: fallback, stability: 0.45, trend: 0, volatility: fallback ? 35 : 50 };
+    return { average: fallback, stability: fallback ? 0.68 : 0.5, trend: 0, volatility: fallback ? 12 : 24 };
   }
 
   const average = scores.reduce((sum, value) => sum + value, 0) / scores.length;

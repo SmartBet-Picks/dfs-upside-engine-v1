@@ -30,6 +30,8 @@ export function estimateOwnership(players, slateContext = {}) {
     return acc;
   }, {});
   const slateSize = Math.max(players.length, 1);
+  const slateType = String(slateContext.slate_type || slateContext.slateType || "").toLowerCase();
+  const sport = String(slateContext.sport || "").toLowerCase();
 
   return players.map((player, index) => {
     const salaryScore = rankScore(salaryRanks.get(index), slateSize);
@@ -40,9 +42,8 @@ export function estimateOwnership(players, slateContext = {}) {
     const roleBoost = roleProxy(player);
     const recentScore = recentPerformanceProxy(player);
     const injuryNewsBoost = injuryNewsRoleBoost(player);
-    const slateSizeDiscount = slateSize >= 120 ? 0.7 : slateSize >= 70 ? 0.82 : slateSize >= 35 ? 1 : 1.15;
-
-    const estimated = (
+    const slateSizeDiscount = slateSize >= 120 ? 0.72 : slateSize >= 70 ? 0.82 : slateSize >= 35 ? 0.92 : 1;
+    const composite = (
       salaryScore * 0.18 +
       projectionScore * 0.28 +
       valueScore * 0.20 +
@@ -52,8 +53,12 @@ export function estimateOwnership(players, slateContext = {}) {
       roleBoost * 0.06 +
       injuryNewsBoost * 0.04
     ) * slateSizeDiscount;
+    const baseline = slateType === "showdown" ? 4 : 2;
+    const multiplier = slateType === "showdown" ? 0.42 : 0.3;
+    const sportCap = sport === "nba" && slateType === "showdown" ? 48 : slateType === "showdown" ? 52 : 38;
+    const estimated = baseline + composite * multiplier;
 
-    return Number(clamp(estimated, 1, 55).toFixed(2));
+    return Number(clamp(estimated, 1, sportCap).toFixed(2));
   });
 }
 
