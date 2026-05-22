@@ -26,13 +26,17 @@ Blocked sources:
 The engine generates:
 
 - `projection`
+- `points`
 - `floor`
 - `ceiling`
 - `boom_pct`
 - `bust_pct`
 - `estimated_ownership`
+- `value_score`
 - `upside_score`
 - `leverage_score`
+- `volatility_score`
+- `confidence_score`
 - `fake_chalk_warning`
 - `single_entry_grade`
 - `contest_fit_tag`
@@ -83,6 +87,10 @@ NBA_GAME_LOGS_URL=
 MMA_GAME_LOGS_URL=
 GOLF_GAME_LOGS_URL=
 NASCAR_GAME_LOGS_URL=
+AUTO_SCAN_ENABLED=false
+AUTO_SCAN_INTERVAL_MINUTES=30
+AUTO_SCAN_RUN_ON_START=true
+AUTO_SCAN_JOBS=nba:showdown:draftkings
 ```
 
 Run `sql/schema.sql` in Supabase. Existing installs should re-run it so `dfs_players.estimated_ownership` is added.
@@ -125,6 +133,38 @@ NBA_TANK01_PLAYERS_URL=https://your-tank01-endpoint.example/nba/players?date={da
 
 If a feed is missing or fails, the route returns an empty array or empty scan result instead of crashing.
 
+## Automatic Scans
+
+Railway can run automatic scans when legal salary/player feed URLs are configured. The server cannot read CSV files from your local Downloads folder, so automatic Railway scans need URLs such as `NBA_DRAFTKINGS_SALARIES_URL` or a Tank01/public feed.
+
+Enable automatic scans with:
+
+```env
+AUTO_SCAN_ENABLED=true
+AUTO_SCAN_INTERVAL_MINUTES=30
+AUTO_SCAN_RUN_ON_START=true
+AUTO_SCAN_JOBS=nba:showdown:draftkings,mlb:classic:draftkings
+```
+
+`AUTO_SCAN_JOBS` format:
+
+```text
+sport:slate_type:site
+```
+
+Examples:
+
+```env
+AUTO_SCAN_JOBS=nba:showdown:draftkings
+AUTO_SCAN_JOBS=mlb:classic:draftkings,nfl:classic:draftkings
+```
+
+For local CSV automation, use Windows Task Scheduler to run:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File "C:\Users\mjika\Documents\Codex\2026-05-20\build-a-brand-new-project-called\scan-dk-csv.ps1" nba showdown "C:\Users\mjika\Downloads\DKSalaries.csv"
+```
+
 ## Scan Example
 
 You can seed a scan with your own legal player data:
@@ -160,6 +200,7 @@ GET /health
 GET /sports
 GET /slates?sport=mlb&slate_type=classic
 POST /scan?sport=mlb&slate_type=classic&site=draftkings
+GET /api/projections?sport=mlb&slate_type=classic
 GET /players?sport=mlb&slate_type=classic
 GET /top-upside?sport=mlb&slate_type=classic
 GET /leverage?sport=mlb&slate_type=classic
@@ -169,6 +210,43 @@ GET /contest-fit?sport=mlb&slate_type=classic&contest_type=single_entry&contest_
 GET /showdown-captains?sport=nfl&slate_type=showdown
 GET /showdown-flex?sport=nfl&slate_type=showdown
 DELETE /clear-slate?sport=mlb&slate_type=classic
+```
+
+## Website Projection Feed
+
+Use this endpoint for your website or Shopify embed:
+
+```text
+GET /api/projections?sport=nba&slate_type=showdown&site=draftkings
+```
+
+It returns a stable model feed:
+
+```json
+{
+  "sport": "nba",
+  "slate_type": "showdown",
+  "site": "draftkings",
+  "model_version": "internal-dfs-v1",
+  "generated_at": "2026-05-22T00:00:00.000Z",
+  "count": 36,
+  "projections": [
+    {
+      "player_name": "Example Player",
+      "points": 42.1,
+      "floor": 28.4,
+      "ceiling": 61.8,
+      "boom_pct": 29.5,
+      "bust_pct": 14.2,
+      "ownership": 24.8,
+      "estimated_ownership": 24.8,
+      "value_score": 73.1,
+      "upside_score": 78.4,
+      "leverage_score": 66.2,
+      "confidence_score": 90
+    }
+  ]
+}
 ```
 
 ## Ownership Model
