@@ -165,6 +165,29 @@ For local CSV automation, use Windows Task Scheduler to run:
 powershell -ExecutionPolicy Bypass -File "C:\Users\mjika\Documents\Codex\2026-05-20\build-a-brand-new-project-called\scan-dk-csv.ps1" nba showdown "C:\Users\mjika\Downloads\DKSalaries.csv"
 ```
 
+## Private Projection CSV Import
+
+For private projection CSVs that already include salary, projection, and ownership, use:
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scan-projections-csv.ps1 nba showdown "C:\Users\mjika\Downloads\your-projections.csv"
+```
+
+Supported columns:
+
+```text
+Player,Salary,Position,Team,Opponent,Mins,FPPM,Projection,Value,Ownership %,CPT Ownership,Std Dev,Injury,Starting
+```
+
+The importer maps the CSV into the engine and estimates any missing risk fields:
+
+```text
+Floor
+Ceiling
+BoomPercentage
+BustPercentage
+```
+
 ## Scan Example
 
 You can seed a scan with your own legal player data:

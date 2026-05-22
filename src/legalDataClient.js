@@ -222,6 +222,18 @@ async function safeFetchJson(url, headers, source, sport) {
 }
 
 function buildProjectionRow(row, context) {
+  if (Number(row.Projection || row.projectedPoints || 0) > 0 && (Number(row.Floor || 0) > 0 || Number(row.Ceiling || 0) > 0)) {
+    return {
+      ...row,
+      Projection: round(Number(row.Projection || row.projectedPoints || 0)),
+      Floor: round(Number(row.Floor || row.floor || 0)),
+      Ceiling: round(Number(row.Ceiling || row.ceiling || 0)),
+      BoomPercentage: round(Number(row.BoomPercentage || row.boom_pct || row.boomPct || estimateBoom(Number(row.Projection || 0), Number(row.Ceiling || 0)))),
+      BustPercentage: round(Number(row.BustPercentage || row.bust_pct || row.bustPct || estimateBust(Number(row.Projection || 0), Number(row.Floor || 0)))),
+      model_inputs: { source: row.source || "projection_csv", imported: true }
+    };
+  }
+
   const recent = recentPerformance(row, context.gameLogRows);
   const odds = oddsContext(row, context.oddsRows);
   const injury = injuryContext(row, context.injuryRows);
@@ -258,6 +270,8 @@ function finalizeInternalProjection(player, projection) {
     ceiling: round(ceiling),
     boom_pct: round(Number(projection.BoomPercentage || player.boom_pct || estimateBoom(projectedPoints, ceiling))),
     bust_pct: round(Number(projection.BustPercentage || player.bust_pct || estimateBust(projectedPoints, floor))),
+    ownership: Number(player.ownership || projection.Ownership || projection.ProjectedOwnership || 0),
+    ownership_source: player.ownership || projection.Ownership || projection.ProjectedOwnership ? "provider" : player.ownership_source,
     raw: { seed: player.raw, model: projection.model_inputs || {}, projection }
   };
 }
