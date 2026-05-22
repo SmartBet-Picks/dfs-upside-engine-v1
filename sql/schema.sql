@@ -69,6 +69,21 @@ on dfs_players (slate_id, site, player_id, roster_slot);
 create index if not exists dfs_players_sport_slate_type_idx
 on dfs_players (sport, slate_type, site);
 
+create index if not exists dfs_players_sport_upside_idx
+on dfs_players (sport, slate_type, site, upside_score desc);
+
+create index if not exists dfs_players_sport_leverage_idx
+on dfs_players (sport, slate_type, site, leverage_score desc);
+
+create index if not exists dfs_players_sport_ownership_idx
+on dfs_players (sport, slate_type, site, ownership desc);
+
+create index if not exists dfs_players_sport_captain_idx
+on dfs_players (sport, slate_type, site, showdown_captain_score desc);
+
+create index if not exists dfs_players_sport_flex_idx
+on dfs_players (sport, slate_type, site, showdown_flex_score desc);
+
 create index if not exists dfs_players_upside_idx
 on dfs_players (upside_score desc);
 

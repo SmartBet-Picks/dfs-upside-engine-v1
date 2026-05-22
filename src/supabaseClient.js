@@ -2,13 +2,16 @@ import { createClient } from "@supabase/supabase-js";
 import ws from "ws";
 
 const { SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY } = process.env;
+let supabaseClient;
 
 export function getSupabase() {
   if (!SUPABASE_URL || !SUPABASE_SERVICE_ROLE_KEY) {
     throw new Error("Supabase is not configured. Set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY.");
   }
 
-  return createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
+  if (supabaseClient) return supabaseClient;
+
+  supabaseClient = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, {
     auth: {
       persistSession: false,
       autoRefreshToken: false
@@ -17,6 +20,8 @@ export function getSupabase() {
       transport: ws
     }
   });
+
+  return supabaseClient;
 }
 
 export async function insertScanLog({ sport, slate_type, status, message, players_processed = 0 }) {

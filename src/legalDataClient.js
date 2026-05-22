@@ -149,19 +149,28 @@ export function mergeProjectionRows(players, projectionRows = []) {
 }
 
 async function loadPlayerSeedRows(sport, site, params) {
+  const cacheKey = `${sport}:${site}`;
+  params.__playerSeedRows ||= {};
+  if (params.__playerSeedRows[cacheKey]) return params.__playerSeedRows[cacheKey];
+
   const manualRows = extractManualRows(params);
-  if (manualRows.length) return dedupeSalaryRows(manualRows);
+  if (manualRows.length) return cacheSeedRows(params, cacheKey, dedupeSalaryRows(manualRows));
 
   const salaryRows = await loadPublicRows(`${sport.toUpperCase()}_${site.toUpperCase()}_SALARIES_URL`, params, null);
-  if (Array.isArray(salaryRows) && salaryRows.length) return dedupeSalaryRows(salaryRows);
+  if (Array.isArray(salaryRows) && salaryRows.length) return cacheSeedRows(params, cacheKey, dedupeSalaryRows(salaryRows));
 
   const genericSalaryRows = await loadPublicRows(`${sport.toUpperCase()}_SALARIES_URL`, params, null);
-  if (Array.isArray(genericSalaryRows) && genericSalaryRows.length) return dedupeSalaryRows(genericSalaryRows);
+  if (Array.isArray(genericSalaryRows) && genericSalaryRows.length) return cacheSeedRows(params, cacheKey, dedupeSalaryRows(genericSalaryRows));
 
   const tankRows = await loadTank01Rows(sport, params);
-  if (tankRows.length) return dedupeSalaryRows(tankRows);
+  if (tankRows.length) return cacheSeedRows(params, cacheKey, dedupeSalaryRows(tankRows));
 
-  return [];
+  return cacheSeedRows(params, cacheKey, []);
+}
+
+function cacheSeedRows(params, cacheKey, rows) {
+  params.__playerSeedRows[cacheKey] = rows;
+  return rows;
 }
 
 async function loadTank01Rows(sport, params) {
