@@ -259,6 +259,12 @@ async function runScan({ sport, slate_type, site, query = {}, body = {} }) {
     const rawPlayers = await adapter.getSlatePlayers(sport, slate.slate_id, slate_type, site, adapterParams);
     const adaptedPlayers = rawPlayers.map((player) => adapter.normalizePlayerRow(player.raw || player, sport, slate_type, site));
     assertPlayersMatchSport(adaptedPlayers, sport);
+    if (!adaptedPlayers.length) {
+      const message = `No players returned for ${sport} ${slate_type} ${site}; keeping existing slate data unchanged. Use the CSV importer or configure a legal salary/projection feed before scanning from the dashboard.`;
+      console.log(`[scan] ${message}`);
+      await insertScanLog({ sport, slate_type, status: "empty", message, players_processed: 0 });
+      return { sport, slate_type, site, status: "empty", message, inserted_slates: insertedSlates, upserted_players: upsertedPlayers, results: scanResults };
+    }
     const projectionRows = await adapter.getProjections(sport, slate.slate_id, adapterParams);
     const ownershipRows = await adapter.getOwnership(sport, slate.slate_id, adapterParams);
 
