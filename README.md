@@ -272,6 +272,63 @@ It returns a stable model feed:
 }
 ```
 
+## Optimizer And Sims
+
+Generate the best 20 simulated lineups:
+
+```powershell
+$body = @{
+  sport = "nba"
+  slate_type = "showdown"
+  site = "draftkings"
+  date = "2026-05-22"
+  lineup_count = 20
+  salary_cap = 50000
+  objective = "showdown"
+  simulations = 500
+} | ConvertTo-Json -Depth 10
+
+$result = Invoke-RestMethod `
+  -Uri "https://dfs-upside-engine-v1-production.up.railway.app/api/optimize" `
+  -Method POST `
+  -ContentType "application/json" `
+  -Body $body
+
+$result.lineups | Select-Object rank,salary,projection,ceiling,ownership,leverage,strategy_score | Format-Table
+```
+
+Download the CSV after generation:
+
+```powershell
+Invoke-WebRequest `
+  -Uri "https://dfs-upside-engine-v1-production.up.railway.app$($result.download_url)" `
+  -OutFile "C:\Users\mjika\Downloads\dfs-lineups.csv"
+```
+
+Optimizer options:
+
+```text
+objective: balanced, projection, ceiling, leverage, contrarian, single_entry, contest_fit, showdown
+lineup_count: number of lineups to return
+salary_cap: salary cap
+simulations: simulation count
+locks: player names to force in
+excludes: player names to remove
+pool_limit: max player pool size
+```
+
+The optimizer uses the engine grades in its decisions:
+
+```text
+upside_score
+leverage_score
+fake_chalk_warning
+single_entry_grade
+contest_fit_tag
+showdown_captain_score
+showdown_flex_score
+```
+
 ## Ownership Model
 
 When real ownership is unavailable, the engine estimates ownership from:

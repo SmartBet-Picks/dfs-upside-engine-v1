@@ -5,6 +5,7 @@ import { getSupabase, insertScanLog } from "./src/supabaseClient.js";
 import { CONTEST_TYPES, SUPPORTED_SPORTS, contestFitMatches, inferContestType, normalizeSite, normalizeSlateType, normalizeSport } from "./src/contestRules.js";
 import { LegalDataSourceError, sourceHealth, mergeProjectionRows, validateLegalDataSources } from "./src/legalDataClient.js";
 import { applyOwnership } from "./src/ownershipEngine.js";
+import { lineupsToCsv, optimizeLineups } from "./src/optimizerEngine.js";
 import { rankForContest, scorePlayers } from "./src/scoringEngine.js";
 import { calculateShowdownScores } from "./src/showdownEngine.js";
 import { sportAdapters } from "./src/sportAdapters/index.js";
@@ -12,6 +13,7 @@ import { sportAdapters } from "./src/sportAdapters/index.js";
 const app = express();
 const port = Number(process.env.PORT || 3000);
 let autoScanRunning = false;
+const lineupExports = new Map();
 
 app.use(cors());
 app.use(express.json({ limit: "1mb" }));
@@ -32,6 +34,8 @@ app.get("/", (req, res) => {
       "POST /scan?sport=mlb&slate_type=classic&site=draftkings",
       "GET /players?sport=mlb&slate_type=classic",
       "GET /api/projections?sport=mlb&slate_type=classic",
+      "POST /api/optimize",
+      "GET /api/lineups/:id.csv",
       "GET /top-upside?sport=mlb&slate_type=classic",
       "GET /leverage?sport=mlb&slate_type=classic",
       "GET /fake-chalk?sport=mlb&slate_type=classic",
@@ -151,6 +155,61 @@ app.get("/showdown-flex", asyncHandler(async (req, res) => {
   const players = await fetchPlayers({ sport, slate_type, site, date: req.query.date, limit: req.query.limit, orderBy: "showdown_flex_score" });
   res.json({ sport, slate_type, site, count: players.length, players });
 }));
+
+app.post("/api/optimize", asyncHandler(async (req, res) => {
+  const { sport, slate_type, site } = parseSlateQuery(req.body || {}, false);
+  const players = await fetchPlayers({
+    sport,
+    slate_type,
+    site,
+    date: req.body?.date,
+    limit: req.body?.pool_limit || 500,
+    orderBy: slate_type === "showdown" ? "showdown_captain_score" : "upside_score"
+  });
+
+  if (!players.length) {
+    return res.status(404).json({
+      error: true,
+      message: "No projection rows found for that sport/slate/site/date. Scan a projection CSV first.",
+      sport,
+      slate_type,
+      site
+    });
+  }
+
+  const lineups = optimizeLineups(players, {
+    ...req.body,
+    sport,
+    slate_type,
+    site
+  });
+  const exportId = createExportId();
+  const csv = lineupsToCsv(lineups);
+  lineupExports.set(exportId, { csv, createdAt: Date.now() });
+  pruneLineupExports();
+
+  res.json({
+    sport,
+    slate_type,
+    site,
+    date: req.body?.date || null,
+    objective: req.body?.objective || "balanced",
+    lineup_count: lineups.length,
+    download_url: `/api/lineups/${exportId}.csv`,
+    lineups
+  });
+}));
+
+app.get("/api/lineups/:id.csv", (req, res) => {
+  const item = lineupExports.get(req.params.id);
+  if (!item) {
+    return res.status(404).send("Lineup export not found or expired. Generate lineups again.");
+  }
+
+  res.setHeader("content-type", "text/csv; charset=utf-8");
+  res.setHeader("content-disposition", `attachment; filename="dfs-lineups-${req.params.id}.csv"`);
+  res.send(item.csv);
+});
 
 app.delete("/clear-slate", asyncHandler(async (req, res) => {
   const { sport, slate_type, site } = parseSlateQuery(req.query, false);
@@ -390,6 +449,23 @@ function parseAutoScanJob(rawJob) {
 
 function splitEnvList(value) {
   return String(value || "").split(",").map((item) => item.trim()).filter(Boolean);
+}
+
+function createExportId() {
+  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function pruneLineupExports() {
+  const maxAgeMs = 60 * 60 * 1000;
+  const now = Date.now();
+  for (const [id, item] of lineupExports.entries()) {
+    if (now - item.createdAt > maxAgeMs) lineupExports.delete(id);
+  }
+
+  while (lineupExports.size > 50) {
+    const oldest = lineupExports.keys().next().value;
+    lineupExports.delete(oldest);
+  }
 }
 
 async function fetchPlayers({ sport, slate_type, site, date, limit = 50, filters = {}, orderBy = "upside_score" }) {
