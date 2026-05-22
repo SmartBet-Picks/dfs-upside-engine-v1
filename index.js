@@ -103,18 +103,18 @@ app.post("/scan", asyncHandler(async (req, res) => {
     if (slateError) throw new Error(`Failed to upsert slate ${slate.slate_id}: ${slateError.message}`);
     insertedSlates += 1;
 
-    const { error: clearPlayersError } = await supabase
-      .from("dfs_players")
-      .delete()
-      .eq("slate_id", slateRow.id);
-    if (clearPlayersError) throw new Error(`Failed to clear existing players for slate ${slate.slate_id}: ${clearPlayersError.message}`);
-
     const adapterParams = { ...req.query, body: req.body, slate, slateRaw: slate.raw, site };
     const rawPlayers = await adapter.getSlatePlayers(sport, slate.slate_id, slate_type, site, adapterParams);
     const adaptedPlayers = rawPlayers.map((player) => adapter.normalizePlayerRow(player.raw || player, sport, slate_type, site));
     assertPlayersMatchSport(adaptedPlayers, sport);
     const projectionRows = await adapter.getProjections(sport, slate.slate_id, adapterParams);
     const ownershipRows = await adapter.getOwnership(sport, slate.slate_id, adapterParams);
+
+    const { error: clearPlayersError } = await supabase
+      .from("dfs_players")
+      .delete()
+      .eq("slate_id", slateRow.id);
+    if (clearPlayersError) throw new Error(`Failed to clear existing players for slate ${slate.slate_id}: ${clearPlayersError.message}`);
 
     const projectedPlayers = mergeProjectionRows(adaptedPlayers, projectionRows);
     const ownedPlayers = applyOwnership(projectedPlayers, ownershipRows, { sport, slate_type, site, slateSize: projectedPlayers.length });
