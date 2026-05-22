@@ -83,13 +83,13 @@ app.post("/scan", asyncHandler(async (req, res) => {
 
 app.get("/players", asyncHandler(async (req, res) => {
   const { sport, slate_type, site } = parseSlateQuery(req.query, false);
-  const players = await fetchPlayers({ sport, slate_type, site, limit: req.query.limit });
+  const players = await fetchPlayers({ sport, slate_type, site, date: req.query.date, limit: req.query.limit });
   res.json({ sport, slate_type, site, count: players.length, players });
 }));
 
 app.get("/api/projections", asyncHandler(async (req, res) => {
   const { sport, slate_type, site } = parseSlateQuery(req.query, false);
-  const players = await fetchPlayers({ sport, slate_type, site, limit: req.query.limit || 500 });
+  const players = await fetchPlayers({ sport, slate_type, site, date: req.query.date, limit: req.query.limit || 500 });
   const generatedAt = new Date().toISOString();
 
   res.json({
@@ -105,25 +105,25 @@ app.get("/api/projections", asyncHandler(async (req, res) => {
 
 app.get("/top-upside", asyncHandler(async (req, res) => {
   const { sport, slate_type, site } = parseSlateQuery(req.query, false);
-  const players = await fetchPlayers({ sport, slate_type, site, limit: req.query.limit, orderBy: "upside_score" });
+  const players = await fetchPlayers({ sport, slate_type, site, date: req.query.date, limit: req.query.limit, orderBy: "upside_score" });
   res.json({ sport, slate_type, site, count: players.length, players });
 }));
 
 app.get("/leverage", asyncHandler(async (req, res) => {
   const { sport, slate_type, site } = parseSlateQuery(req.query, false);
-  const players = await fetchPlayers({ sport, slate_type, site, limit: req.query.limit, orderBy: "leverage_score" });
+  const players = await fetchPlayers({ sport, slate_type, site, date: req.query.date, limit: req.query.limit, orderBy: "leverage_score" });
   res.json({ sport, slate_type, site, count: players.length, players });
 }));
 
 app.get("/fake-chalk", asyncHandler(async (req, res) => {
   const { sport, slate_type, site } = parseSlateQuery(req.query, false);
-  const players = await fetchPlayers({ sport, slate_type, site, limit: req.query.limit, filters: { fake_chalk_warning: true }, orderBy: "ownership" });
+  const players = await fetchPlayers({ sport, slate_type, site, date: req.query.date, limit: req.query.limit, filters: { fake_chalk_warning: true }, orderBy: "ownership" });
   res.json({ sport, slate_type, site, count: players.length, players });
 }));
 
 app.get("/single-entry", asyncHandler(async (req, res) => {
   const { sport, slate_type, site } = parseSlateQuery(req.query, false);
-  const allPlayers = await fetchPlayers({ sport, slate_type, site, limit: 500 });
+  const allPlayers = await fetchPlayers({ sport, slate_type, site, date: req.query.date, limit: 500 });
   const players = rankForContest(allPlayers, "single_entry", 500).filter((player) => !String(player.single_entry_grade || "").includes("Not")).slice(0, readLimit(req.query.limit));
   res.json({ sport, slate_type, site, count: players.length, players });
 }));
@@ -132,7 +132,7 @@ app.get("/contest-fit", asyncHandler(async (req, res) => {
   const { sport, slate_type, site } = parseSlateQuery(req.query, false);
   const contestType = inferContestType(req.query.contest_type, req.query.contest_size);
   const contestSize = Number(req.query.contest_size || 500);
-  const allPlayers = await fetchPlayers({ sport, slate_type, site, limit: 500 });
+  const allPlayers = await fetchPlayers({ sport, slate_type, site, date: req.query.date, limit: 500 });
   const players = rankForContest(allPlayers, contestType, contestSize)
     .filter((player) => contestFitMatches(player, contestType, contestSize))
     .slice(0, readLimit(req.query.limit));
@@ -142,13 +142,13 @@ app.get("/contest-fit", asyncHandler(async (req, res) => {
 
 app.get("/showdown-captains", asyncHandler(async (req, res) => {
   const { sport, slate_type, site } = parseSlateQuery({ ...req.query, slate_type: req.query.slate_type || "showdown" }, false);
-  const players = await fetchPlayers({ sport, slate_type, site, limit: req.query.limit, orderBy: "showdown_captain_score" });
+  const players = await fetchPlayers({ sport, slate_type, site, date: req.query.date, limit: req.query.limit, orderBy: "showdown_captain_score" });
   res.json({ sport, slate_type, site, count: players.length, players });
 }));
 
 app.get("/showdown-flex", asyncHandler(async (req, res) => {
   const { sport, slate_type, site } = parseSlateQuery({ ...req.query, slate_type: req.query.slate_type || "showdown" }, false);
-  const players = await fetchPlayers({ sport, slate_type, site, limit: req.query.limit, orderBy: "showdown_flex_score" });
+  const players = await fetchPlayers({ sport, slate_type, site, date: req.query.date, limit: req.query.limit, orderBy: "showdown_flex_score" });
   res.json({ sport, slate_type, site, count: players.length, players });
 }));
 
@@ -386,14 +386,18 @@ function splitEnvList(value) {
   return String(value || "").split(",").map((item) => item.trim()).filter(Boolean);
 }
 
-async function fetchPlayers({ sport, slate_type, site, limit = 50, filters = {}, orderBy = "upside_score" }) {
+async function fetchPlayers({ sport, slate_type, site, date, limit = 50, filters = {}, orderBy = "upside_score" }) {
   const supabase = getSupabase();
+  const slateIds = await resolveSlateIds({ supabase, sport, slate_type, site, date });
+  if (!slateIds.length) return [];
+
   let query = supabase
     .from("dfs_players")
     .select("*")
     .eq("sport", sport)
     .eq("slate_type", slate_type)
     .eq("site", site)
+    .in("slate_id", slateIds)
     .order(orderBy, { ascending: false, nullsFirst: false })
     .limit(readLimit(limit));
 
@@ -404,6 +408,26 @@ async function fetchPlayers({ sport, slate_type, site, limit = 50, filters = {},
   const { data, error } = await query;
   if (error) throw new Error(error.message);
   return data || [];
+}
+
+async function resolveSlateIds({ supabase, sport, slate_type, site, date }) {
+  let query = supabase
+    .from("dfs_slates")
+    .select("id,slate_id,slate_start_time,created_at")
+    .eq("sport", sport)
+    .eq("slate_type", slate_type)
+    .eq("site", site);
+
+  if (date) {
+    query = query.or(`slate_id.ilike.%${date}%,slate_start_time.gte.${date}T00:00:00.000Z`)
+      .lt("slate_start_time", `${date}T23:59:59.999Z`);
+  }
+
+  query = query.order("created_at", { ascending: false }).limit(date ? 20 : 1);
+
+  const { data, error } = await query;
+  if (error) throw new Error(error.message);
+  return (data || []).map((slate) => slate.id);
 }
 
 function readLimit(limit) {
