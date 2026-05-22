@@ -112,6 +112,7 @@ app.post("/scan", asyncHandler(async (req, res) => {
     const adapterParams = { ...req.query, body: req.body, slate, slateRaw: slate.raw, site };
     const rawPlayers = await adapter.getSlatePlayers(sport, slate.slate_id, slate_type, site, adapterParams);
     const adaptedPlayers = rawPlayers.map((player) => adapter.normalizePlayerRow(player.raw || player, sport, slate_type, site));
+    assertPlayersMatchSport(adaptedPlayers, sport);
     const projectionRows = await adapter.getProjections(sport, slate.slate_id, adapterParams);
     const ownershipRows = await adapter.getOwnership(sport, slate.slate_id, adapterParams);
 
@@ -268,7 +269,7 @@ app.use((err, req, res, next) => {
     });
   }
 
-  res.status(500).json({
+  res.status(err.statusCode || 500).json({
     error: true,
     message: err.message || "Unexpected server error",
     path: req.path
@@ -317,6 +318,38 @@ function readLimit(limit) {
   const parsed = Number(limit || 50);
   if (!Number.isFinite(parsed)) return 50;
   return Math.max(1, Math.min(parsed, 500));
+}
+
+function assertPlayersMatchSport(players, sport) {
+  const mismatches = detectSportMismatches(players, sport);
+  if (!mismatches.length) return;
+
+  const details = mismatches.slice(0, 6).map((player) => `${player.player_name} (${player.position || "unknown"})`).join(", ");
+  const error = new Error(`Uploaded salary/player data does not look like ${sport.toUpperCase()} data. Examples: ${details}. Use the ${sport.toUpperCase()} DraftKings CSV before scanning this sport.`);
+  error.statusCode = 400;
+  throw error;
+}
+
+function detectSportMismatches(players, sport) {
+  const allowedBySport = {
+    nba: new Set(["PG", "SG", "SF", "PF", "C", "G", "F", "UTIL", "CPT", "FLEX"]),
+    nfl: new Set(["QB", "RB", "WR", "TE", "DST", "DEF", "FLEX", "CPT"]),
+    mlb: new Set(["P", "SP", "RP", "C", "1B", "2B", "3B", "SS", "OF", "UTIL", "CPT", "FLEX"]),
+    mma: new Set(["F", "FIGHTER", "CPT", "FLEX"]),
+    golf: new Set(["G", "GOLFER", "CPT", "FLEX"]),
+    nascar: new Set(["D", "DRIVER", "CPT", "FLEX"])
+  };
+  const allowed = allowedBySport[sport];
+  if (!allowed || players.length < 3) return [];
+
+  return players.filter((player) => {
+    const tokens = String(player.position || player.roster_slot || "")
+      .toUpperCase()
+      .split(/[\/,\s]+/)
+      .filter(Boolean);
+    if (!tokens.length) return false;
+    return !tokens.some((token) => allowed.has(token));
+  });
 }
 
 function stripRaw(row) {
