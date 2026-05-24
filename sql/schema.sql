@@ -31,6 +31,7 @@ create table if not exists dfs_players (
   position text,
   roster_slot text,
   salary numeric,
+  projected_minutes numeric,
   projection numeric,
   floor numeric,
   ceiling numeric,
@@ -62,6 +63,9 @@ create table if not exists dfs_players (
 
 alter table dfs_players
 add column if not exists estimated_ownership numeric;
+
+alter table dfs_players
+add column if not exists projected_minutes numeric;
 
 create unique index if not exists dfs_players_unique_slate_player_slot
 on dfs_players (slate_id, site, player_id, roster_slot);

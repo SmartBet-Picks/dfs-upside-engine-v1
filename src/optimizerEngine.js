@@ -17,11 +17,15 @@ export function optimizeLineups(players, options = {}) {
   const salaryCap = safeNum(options.salary_cap || options.salaryCap, 50000);
   const objective = String(options.objective || "balanced").toLowerCase();
   const simCount = clampInt(options.simulations || options.sims || 300, 0, 5000);
+  const minUniquePlayers = clampInt(options.min_unique_players || options.minUniquePlayers || 3, 0, 6);
+  const minProjectedMinutes = sport === "nba"
+    ? safeNum(options.min_projected_minutes || options.minProjectedMinutes, 15)
+    : safeNum(options.min_projected_minutes || options.minProjectedMinutes, 0);
   const candidates = prepareCandidates(players, options);
 
   const lineups = slateType === "showdown"
-    ? optimizeShowdown(candidates, { lineupCount, salaryCap, objective })
-    : optimizeClassic(candidates, { sport, lineupCount, salaryCap, objective });
+    ? optimizeShowdown(candidates, { lineupCount, salaryCap, objective, minUniquePlayers, minProjectedMinutes })
+    : optimizeClassic(candidates, { sport, lineupCount, salaryCap, objective, minUniquePlayers, minProjectedMinutes });
 
   return attachSimulations(lineups, simCount);
 }
@@ -73,6 +77,10 @@ function prepareCandidates(players, options) {
   const locks = normalizeNameSet(options.locks);
   const excludes = normalizeNameSet(options.excludes);
   const maxPlayerOwnership = safeNum(options.max_player_ownership || options.maxPlayerOwnership, 100);
+  const sport = String(options.sport || "").toLowerCase();
+  const minProjectedMinutes = sport === "nba"
+    ? safeNum(options.min_projected_minutes || options.minProjectedMinutes, 15)
+    : safeNum(options.min_projected_minutes || options.minProjectedMinutes, 0);
   const slateType = String(options.slate_type || options.slateType || "").toLowerCase();
   const defaultPoolLimit = slateType === "showdown" ? 42 : 70;
   const poolLimit = clampInt(options.pool_limit || options.poolLimit || defaultPoolLimit, 10, 150);
@@ -80,11 +88,13 @@ function prepareCandidates(players, options) {
   return players
     .filter((player) => !excludes.has(normalizeName(player.player_name)))
     .filter((player) => safeNum(player.salary) > 0 && safeNum(player.projection) > 0)
+    .filter((player) => sport !== "nba" || safeNum(player.projected_minutes) >= minProjectedMinutes)
     .filter((player) => locks.has(normalizeName(player.player_name)) || safeNum(player.ownership) <= maxPlayerOwnership)
     .map((player) => ({
       ...player,
       _name: normalizeName(player.player_name),
       _salary: safeNum(player.salary),
+      _minutes: safeNum(player.projected_minutes),
       _projection: safeNum(player.projection),
       _floor: safeNum(player.floor),
       _ceiling: safeNum(player.ceiling, safeNum(player.projection) * 1.6),
@@ -106,7 +116,7 @@ function prepareCandidates(players, options) {
 }
 
 function optimizeShowdown(players, options) {
-  const top = new TopLineups(options.lineupCount);
+  const top = new TopLineups(options.lineupCount, options.minUniquePlayers);
   const captainPool = [...players].sort((a, b) => playerObjective(b, options.objective, "CPT") - playerObjective(a, options.objective, "CPT")).slice(0, Math.min(players.length, 24));
   const flexPool = [...players].sort((a, b) => playerObjective(b, options.objective, "FLEX") - playerObjective(a, options.objective, "FLEX")).slice(0, Math.min(players.length, 38));
 
@@ -128,7 +138,7 @@ function optimizeShowdown(players, options) {
 }
 
 function optimizeClassic(players, options) {
-  const top = new TopLineups(options.lineupCount);
+  const top = new TopLineups(options.lineupCount, options.minUniquePlayers);
   const roster = CLASSIC_RULES[options.sport] || CLASSIC_RULES.nba;
   const sorted = players.slice(0, Math.min(players.length, 80));
   const attempts = Math.max(options.lineupCount * 300, 3000);
@@ -186,6 +196,7 @@ function lineupPlayer(player, slot, projectionMultiplier, salaryMultiplier) {
     opponent: player.opponent,
     position: player.position,
     salary: round(player._salary * salaryMultiplier),
+    projected_minutes: round(player._minutes),
     projection: round(player._projection * projectionMultiplier),
     floor: round(player._floor * projectionMultiplier),
     ceiling: round(player._ceiling * projectionMultiplier),
@@ -363,14 +374,16 @@ function forEachCombination(items, size, callback, start = 0, combo = []) {
 }
 
 class TopLineups {
-  constructor(limit) {
+  constructor(limit, minUniquePlayers = 0) {
     this.limit = limit;
+    this.minUniquePlayers = minUniquePlayers;
     this.items = [];
     this.keys = new Set();
   }
 
   add(lineup) {
     if (this.keys.has(lineup.lineup_id)) return;
+    if (!this.hasEnoughUniquePlayers(lineup)) return;
     this.keys.add(lineup.lineup_id);
     this.items.push(lineup);
     this.items.sort((a, b) => b.objective_score - a.objective_score);
@@ -383,10 +396,25 @@ class TopLineups {
   values() {
     return this.items.slice(0, this.limit);
   }
+
+  hasEnoughUniquePlayers(lineup) {
+    if (!this.minUniquePlayers || !this.items.length) return true;
+    return this.items.every((existing) => uniquePlayerDifference(lineup, existing) >= this.minUniquePlayers);
+  }
 }
 
 function lineupId(players) {
   return players.map((player) => `${player.slot}:${player.player_id || player.player_name}`).join("|");
+}
+
+function uniquePlayerDifference(lineupA, lineupB) {
+  const namesA = new Set(lineupA.players.map((player) => normalizeName(player.player_name)));
+  const namesB = new Set(lineupB.players.map((player) => normalizeName(player.player_name)));
+  let different = 0;
+  namesA.forEach((name) => {
+    if (!namesB.has(name)) different++;
+  });
+  return different;
 }
 
 function normalizeNameSet(values = []) {

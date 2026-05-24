@@ -286,6 +286,8 @@ $body = @{
   salary_cap = 50000
   objective = "showdown"
   simulations = 500
+  min_unique_players = 3
+  min_projected_minutes = 15
 } | ConvertTo-Json -Depth 10
 
 $result = Invoke-RestMethod `
@@ -315,6 +317,8 @@ simulations: simulation count
 locks: player names to force in
 excludes: player names to remove
 pool_limit: max player pool size
+min_unique_players: minimum different player names between accepted lineups, use 3 or 4
+min_projected_minutes: NBA-only lineup eligibility filter, default 15
 ```
 
 The optimizer uses the engine grades in its decisions:

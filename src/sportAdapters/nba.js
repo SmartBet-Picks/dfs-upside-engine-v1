@@ -13,6 +13,7 @@ export function normalizePlayerRow(raw, sport = "nba", slate_type = "classic", s
 
   return {
     ...player,
+    projected_minutes: minutes,
     projection: player.projection + minutes * 0.08 + usage * 0.04,
     floor: Math.max(0, player.floor + minutes * 0.05 - fragilePuntPenalty * 0.15),
     ceiling: player.ceiling + minutes * 0.16 + usage * 0.12,

@@ -126,6 +126,7 @@ export function normalizePlayerRow(raw, sport, slate_type, site) {
     projection,
     floor,
     ceiling,
+    projected_minutes: Number(raw.Minutes || raw.ProjectedMinutes || raw.projected_minutes || raw.projectedMinutes || 0),
     boom_pct: Number(raw.BoomPercentage || raw.boom_pct || raw.boomPct || 0),
     bust_pct: Number(raw.BustPercentage || raw.bust_pct || raw.bustPct || 0),
     ownership: Number(raw.Ownership || raw.ProjectedOwnership || raw.estimated_ownership || 0),
