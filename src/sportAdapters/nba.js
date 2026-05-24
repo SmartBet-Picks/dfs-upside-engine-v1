@@ -7,6 +7,13 @@ export const getOwnership = (sport, slateId, params) => baseGetOwnership("nba", 
 
 export function normalizePlayerRow(raw, sport = "nba", slate_type = "classic", site = "draftkings") {
   const player = baseNormalizePlayerRow(raw, sport, slate_type, site);
+  if (player.has_csv_projection_data) {
+    return {
+      ...player,
+      projection_source: "csv",
+      calculated_source: null
+    };
+  }
   const minutes = Number(raw.Minutes || raw.ProjectedMinutes || 0);
   const usage = Number(raw.UsageRate || raw.ProjectedUsageRate || 0);
   const fragilePuntPenalty = minutes > 0 && minutes < 18 ? 8 : 0;

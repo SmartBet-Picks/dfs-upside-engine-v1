@@ -7,6 +7,13 @@ export const getOwnership = (sport, slateId, params) => baseGetOwnership("mma", 
 
 export function normalizePlayerRow(raw, sport = "mma", slate_type = "classic", site = "draftkings") {
   const player = baseNormalizePlayerRow(raw, sport, slate_type, site);
+  if (player.has_csv_projection_data) {
+    return {
+      ...player,
+      projection_source: "csv",
+      calculated_source: null
+    };
+  }
   const finishOddsProxy = Number(raw.FinishProbability || raw.KOProbability || raw.SubmissionProbability || 0);
   const volumeProxy = Number(raw.StrikesLandedPerMinute || raw.TakedownsAverage || raw.VolumeRating || 0);
   const underdogCeilingBoost = Number(raw.IsUnderdog || raw.Underdog) ? 6 : 0;

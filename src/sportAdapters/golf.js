@@ -7,6 +7,13 @@ export const getOwnership = (sport, slateId, params) => baseGetOwnership("golf",
 
 export function normalizePlayerRow(raw, sport = "golf", slate_type = "classic", site = "draftkings") {
   const player = baseNormalizePlayerRow(raw, sport, slate_type, site);
+  if (player.has_csv_projection_data) {
+    return {
+      ...player,
+      projection_source: "csv",
+      calculated_source: null
+    };
+  }
   const cutMadeProxy = Number(raw.CutMadeProbability || raw.MakeCutProbability || 0);
   const birdieUpside = Number(raw.BirdieOrBetterPercentage || raw.BirdieRating || 0);
   const finishingCeiling = Number(raw.Top10Probability || raw.WinProbability || 0);
