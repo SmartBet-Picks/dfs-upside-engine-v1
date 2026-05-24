@@ -339,8 +339,9 @@ async function runScan({ sport, slate_type, site, query = {}, body = {} }) {
     const finalPlayers = slate_type === "showdown"
       ? calculateShowdownScores(scoredPlayers, { sport, slate_type, site, salaryCap: slate.salary_cap })
       : scoredPlayers;
+    const dbReadyPlayers = preserveImportedProjectionValues(finalPlayers, body);
 
-    const playerRows = finalPlayers.map((player) => ({
+    const playerRows = dbReadyPlayers.map((player) => ({
       ...toDbPlayer(player),
       slate_id: slateRow.id
     }));
@@ -594,6 +595,49 @@ function toDbPlayer(player) {
     duplication_risk: player.duplication_risk,
     game_script_fit: player.game_script_fit
   };
+}
+
+function preserveImportedProjectionValues(players, body = {}) {
+  if (!body.preserve_imported_projection) return players;
+  const projectionMap = new Map();
+  for (const row of [...(body.players || []), ...(body.salaries || [])]) {
+    const projection = Number(row.Projection ?? row.projectedPoints);
+    if (!Number.isFinite(projection)) continue;
+    for (const key of importedProjectionKeys(row)) {
+      projectionMap.set(key, projection);
+    }
+  }
+
+  if (!projectionMap.size) return players;
+
+  return players.map((player) => {
+    const projection = projectionMap.get(normalizeProjectionKey(player.player_id)) ||
+      projectionMap.get(normalizeProjectionKey(player.player_name));
+    if (!Number.isFinite(projection)) return player;
+    return {
+      ...player,
+      projection
+    };
+  });
+}
+
+function importedProjectionKeys(row) {
+  return [
+    row.PlayerID,
+    row.PlayerId,
+    row.playerID,
+    row.playerId,
+    row.id,
+    row.PlayerName,
+    row.Name,
+    row.Player,
+    row.playerName,
+    row.name
+  ].map(normalizeProjectionKey).filter(Boolean);
+}
+
+function normalizeProjectionKey(value) {
+  return String(value || "").trim().toLowerCase();
 }
 
 function toProjectionFeedRow(player, generatedAt) {
