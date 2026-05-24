@@ -7,6 +7,13 @@ export const getOwnership = (sport, slateId, params) => baseGetOwnership("nascar
 
 export function normalizePlayerRow(raw, sport = "nascar", slate_type = "classic", site = "draftkings") {
   const player = baseNormalizePlayerRow(raw, sport, slate_type, site);
+  if (player.has_csv_projection_data) {
+    return {
+      ...player,
+      projection_source: "csv",
+      calculated_source: null
+    };
+  }
   const dominator = Number(raw.LapsLedProjection || raw.FastestLapsProjection || raw.DominatorRating || 0);
   const placeDifferential = Number(raw.PlaceDifferentialProjection || raw.StartingPositionAdvantage || 0);
   const finishProjection = Number(raw.FinishingPositionProjection || raw.ProjectedFinish || 0);

@@ -9,6 +9,13 @@ export const getOwnership = (sport, slateId, params) => baseGetOwnership("nfl", 
 
 export function normalizePlayerRow(raw, sport = "nfl", slate_type = "classic", site = "draftkings") {
   const player = baseNormalizePlayerRow(raw, sport, slate_type, site);
+  if (player.has_csv_projection_data) {
+    return {
+      ...player,
+      projection_source: "csv",
+      calculated_source: null
+    };
+  }
   const targetShare = Number(raw.TargetShare || raw.ProjectedTargetShare || 0);
   const rushShare = Number(raw.RushShare || raw.ProjectedRushShare || 0);
   const roleBoost = Math.max(targetShare, rushShare) * 0.18;

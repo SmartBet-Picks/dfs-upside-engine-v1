@@ -108,9 +108,17 @@ export function normalizePlayerRow(raw, sport, slate_type, site) {
     raw.fanduelSalary ||
     0
   );
-  const projection = Number(raw.Projection || raw.projectedPoints || raw.fantasyPoints || raw.FantasyPoints || raw.avgFantasyPoints || 0);
-  const floor = Number(raw.Floor || raw.floor || projection * 0.55 || 0);
-  const ceiling = Number(raw.Ceiling || raw.ceiling || projection * 1.75 || 0);
+  const projection = Number(raw.Projection || raw.projection || raw.projected_points || raw.projectedPoints || raw.fantasy_points || raw.fantasyPoints || raw.FantasyPoints || raw.avgFantasyPoints || 0);
+  const floor = Number(raw.Floor || raw.floor || 0) || projection * 0.55 || 0;
+  const ceiling = Number(raw.Ceiling || raw.ceiling || 0) || projection * 1.75 || 0;
+  const boomPct = Number(raw.BoomPercentage || raw.boom_percent || raw.boom_pct || raw.boomPct || 0);
+  const bustPct = Number(raw.BustPercentage || raw.bust_percent || raw.bust_pct || raw.bustPct || 0);
+  const ownership = Number(raw.Ownership || raw.ownership || raw.projected_ownership || raw.ProjectedOwnership || raw.estimated_ownership || 0);
+  const optimalPct = Number(raw.optimal_percent || raw.OptimalPercentage || raw.optimal_pct || 0);
+  const hasCsvProjectionData = [
+    "projection", "projected_points", "fantasy_points", "ceiling", "floor",
+    "boom_percent", "bust_percent", "optimal_percent", "ownership", "projected_ownership"
+  ].some((key) => raw[key] !== undefined && raw[key] !== null && String(raw[key]).trim() !== "");
 
   return {
     player_id: String(raw.PlayerID || raw.PlayerId || raw.playerID || raw.playerId || raw.id || name),
@@ -127,10 +135,15 @@ export function normalizePlayerRow(raw, sport, slate_type, site) {
     floor,
     ceiling,
     projected_minutes: Number(raw.Minutes || raw.ProjectedMinutes || raw.projected_minutes || raw.projectedMinutes || 0),
-    boom_pct: Number(raw.BoomPercentage || raw.boom_pct || raw.boomPct || 0),
-    bust_pct: Number(raw.BustPercentage || raw.bust_pct || raw.bustPct || 0),
-    ownership: Number(raw.Ownership || raw.ProjectedOwnership || raw.estimated_ownership || 0),
-    ownership_source: raw.Ownership || raw.ProjectedOwnership ? "provider" : "estimated",
+    boom_pct: boomPct,
+    bust_pct: bustPct,
+    optimal_percent: optimalPct,
+    ownership,
+    projected_ownership: ownership,
+    ownership_source: raw.Ownership || raw.ownership || raw.ProjectedOwnership || raw.projected_ownership ? "provider" : "estimated",
+    projection_source: hasCsvProjectionData ? "csv" : "engine",
+    calculated_source: hasCsvProjectionData ? null : "engine",
+    has_csv_projection_data: hasCsvProjectionData,
     raw
   };
 }
@@ -223,16 +236,18 @@ async function safeFetchJson(url, headers, source, sport) {
 }
 
 function buildProjectionRow(row, context) {
-  if (Number(row.Projection || row.projectedPoints || 0) > 0 && (Number(row.Floor || 0) > 0 || Number(row.Ceiling || 0) > 0)) {
+  if (Number(row.Projection || row.projection || row.projectedPoints || row.projected_points || 0) > 0 && (Number(row.Floor || row.floor || 0) > 0 || Number(row.Ceiling || row.ceiling || 0) > 0)) {
     return {
       ...row,
-      Projection: round(Number(row.Projection || row.projectedPoints || 0)),
-      Floor: round(Number(row.Floor || row.floor || 0)),
-      Ceiling: round(Number(row.Ceiling || row.ceiling || 0)),
-      BoomPercentage: round(Number(row.BoomPercentage || row.boom_pct || row.boomPct || estimateBoom(Number(row.Projection || 0), Number(row.Ceiling || 0)))),
-      BustPercentage: round(Number(row.BustPercentage || row.bust_pct || row.bustPct || estimateBust(Number(row.Projection || 0), Number(row.Floor || 0)))),
+      Projection: Number(row.Projection || row.projection || row.projectedPoints || row.projected_points || 0),
+      Floor: Number(row.Floor || row.floor || 0),
+      Ceiling: Number(row.Ceiling || row.ceiling || 0),
+      BoomPercentage: Number(row.BoomPercentage || row.boom_percent || row.boom_pct || row.boomPct || estimateBoom(Number(row.Projection || row.projection || 0), Number(row.Ceiling || row.ceiling || 0))),
+      BustPercentage: Number(row.BustPercentage || row.bust_percent || row.bust_pct || row.bustPct || estimateBust(Number(row.Projection || row.projection || 0), Number(row.Floor || row.floor || 0))),
       PreserveProjection: row.PreserveProjection,
-      model_inputs: { source: row.source || "projection_csv", imported: true, preserve_projection: Boolean(row.PreserveProjection) }
+      projection_source: "csv",
+      calculated_source: null,
+      model_inputs: { source: row.source || "projection_csv", imported: true, preserve_projection: true }
     };
   }
 
@@ -275,13 +290,21 @@ function finalizeInternalProjection(player, projection) {
   return {
     ...player,
     salary: Number(player.salary || projection.Salary || projection.salary || 0),
-    projection: round(projectedPoints),
-    floor: round(floor),
-    ceiling: round(ceiling),
-    boom_pct: round(Number(projection.BoomPercentage || player.boom_pct || estimateBoom(projectedPoints, ceiling))),
-    bust_pct: round(Number(projection.BustPercentage || player.bust_pct || estimateBust(projectedPoints, floor))),
-    ownership: Number(player.ownership || projection.Ownership || projection.ProjectedOwnership || 0),
+    projection: preserveImportedProjection || player.has_csv_projection_data ? projectedPoints : round(projectedPoints),
+    floor: preserveImportedProjection || player.has_csv_projection_data ? floor : round(floor),
+    ceiling: preserveImportedProjection || player.has_csv_projection_data ? ceiling : round(ceiling),
+    boom_pct: preserveImportedProjection || player.has_csv_projection_data
+      ? Number(projection.BoomPercentage || player.boom_pct || estimateBoom(projectedPoints, ceiling))
+      : round(Number(projection.BoomPercentage || player.boom_pct || estimateBoom(projectedPoints, ceiling))),
+    bust_pct: preserveImportedProjection || player.has_csv_projection_data
+      ? Number(projection.BustPercentage || player.bust_pct || estimateBust(projectedPoints, floor))
+      : round(Number(projection.BustPercentage || player.bust_pct || estimateBust(projectedPoints, floor))),
+    ownership: Number(player.ownership || projection.Ownership || projection.ownership || projection.ProjectedOwnership || projection.projected_ownership || 0),
+    projected_ownership: Number(player.projected_ownership || player.ownership || projection.ProjectedOwnership || projection.projected_ownership || projection.Ownership || 0),
     ownership_source: player.ownership || projection.Ownership || projection.ProjectedOwnership ? "provider" : player.ownership_source,
+    projection_source: preserveImportedProjection || player.has_csv_projection_data ? "csv" : "engine",
+    calculated_source: preserveImportedProjection || player.has_csv_projection_data ? null : "engine",
+    has_csv_projection_data: Boolean(player.has_csv_projection_data || preserveImportedProjection),
     raw: { seed: player.raw, model: projection.model_inputs || {}, projection }
   };
 }

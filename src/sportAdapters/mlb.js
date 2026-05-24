@@ -9,6 +9,13 @@ export const getOwnership = (sport, slateId, params) => baseGetOwnership("mlb", 
 
 export function normalizePlayerRow(raw, sport = "mlb", slate_type = "classic", site = "draftkings") {
   const player = baseNormalizePlayerRow(raw, sport, slate_type, site);
+  if (player.has_csv_projection_data) {
+    return {
+      ...player,
+      projection_source: "csv",
+      calculated_source: null
+    };
+  }
   const isPitcher = String(player.position || "").toUpperCase().includes("P");
   const lineupSpot = Number(raw.BattingOrder || raw.LineupSpot || 0);
   const power = Number(raw.HomeRun || raw.HomeRuns || raw.PowerRating || 0);
