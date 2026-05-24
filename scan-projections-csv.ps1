@@ -82,6 +82,7 @@ $players = $csvRows | ForEach-Object {
 $body = @{
   players = $players
   source = "private_projection_csv"
+  preserve_imported_projection = $true
   csv_file = [System.IO.Path]::GetFileName($CsvPath)
 } | ConvertTo-Json -Depth 10
 

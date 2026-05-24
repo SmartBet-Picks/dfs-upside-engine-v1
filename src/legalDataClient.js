@@ -231,7 +231,8 @@ function buildProjectionRow(row, context) {
       Ceiling: round(Number(row.Ceiling || row.ceiling || 0)),
       BoomPercentage: round(Number(row.BoomPercentage || row.boom_pct || row.boomPct || estimateBoom(Number(row.Projection || 0), Number(row.Ceiling || 0)))),
       BustPercentage: round(Number(row.BustPercentage || row.bust_pct || row.bustPct || estimateBust(Number(row.Projection || 0), Number(row.Floor || 0)))),
-      model_inputs: { source: row.source || "projection_csv", imported: true }
+      PreserveProjection: row.PreserveProjection,
+      model_inputs: { source: row.source || "projection_csv", imported: true, preserve_projection: Boolean(row.PreserveProjection) }
     };
   }
 
@@ -260,7 +261,15 @@ function buildProjectionRow(row, context) {
 }
 
 function finalizeInternalProjection(player, projection) {
-  const projectedPoints = Number(projection.Projection || projection.projectedPoints || player.projection || 0);
+  const preserveImportedProjection =
+    projection.PreserveProjection ||
+    projection.preserve_projection ||
+    projection.model_inputs?.preserve_projection ||
+    player.raw?.PreserveProjection ||
+    player.raw?.preserve_projection;
+  const projectedPoints = preserveImportedProjection
+    ? Number(player.projection || projection.Projection || projection.projectedPoints || 0)
+    : Number(projection.Projection || projection.projectedPoints || player.projection || 0);
   const floor = Number(projection.Floor || player.floor || projectedPoints * 0.55 || 0);
   const ceiling = Number(projection.Ceiling || player.ceiling || projectedPoints * 1.75 || 0);
   return {
@@ -279,11 +288,19 @@ function finalizeInternalProjection(player, projection) {
 
 function extractManualRows(params) {
   const body = params.body || {};
-  if (Array.isArray(body.players)) return body.players;
-  if (Array.isArray(body.salaries)) return body.salaries;
+  if (Array.isArray(body.players)) return markPreservedProjectionRows(body.players, body);
+  if (Array.isArray(body.salaries)) return markPreservedProjectionRows(body.salaries, body);
   if (Array.isArray(params.players)) return params.players;
   if (Array.isArray(params.salaries)) return params.salaries;
   return [];
+}
+
+function markPreservedProjectionRows(rows, body) {
+  if (!body.preserve_imported_projection) return rows;
+  return rows.map((row) => ({
+    ...row,
+    PreserveProjection: true
+  }));
 }
 
 function dedupeSalaryRows(rows) {
