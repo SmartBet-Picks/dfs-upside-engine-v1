@@ -296,7 +296,7 @@ function extractManualRows(params) {
 }
 
 function markPreservedProjectionRows(rows, body) {
-  if (!body.preserve_imported_projection) return rows;
+  if (!body.preserve_imported_projection && body.source !== "private_projection_csv" && body.source !== "projection_csv") return rows;
   return rows.map((row) => ({
     ...row,
     PreserveProjection: true

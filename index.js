@@ -333,7 +333,7 @@ async function runScan({ sport, slate_type, site, query = {}, body = {} }) {
       .eq("slate_id", slateRow.id);
     if (clearPlayersError) throw new Error(`Failed to clear existing players for slate ${slate.slate_id}: ${clearPlayersError.message}`);
 
-    const projectedPlayers = mergeProjectionRows(adaptedPlayers, projectionRows);
+    const projectedPlayers = preserveImportedProjectionValues(mergeProjectionRows(adaptedPlayers, projectionRows), body);
     const ownedPlayers = applyOwnership(projectedPlayers, ownershipRows, { sport, slate_type, site, slateSize: projectedPlayers.length });
     const scoredPlayers = scorePlayers(ownedPlayers, { sport, slate_type, site, slateSize: ownedPlayers.length, salaryCap: slate.salary_cap });
     const finalPlayers = slate_type === "showdown"
@@ -598,7 +598,7 @@ function toDbPlayer(player) {
 }
 
 function preserveImportedProjectionValues(players, body = {}) {
-  if (!body.preserve_imported_projection) return players;
+  if (!isProjectionLockedImport(body)) return players;
   const projectionMap = new Map();
   for (const row of [...(body.players || []), ...(body.salaries || [])]) {
     const projection = Number(row.Projection ?? row.projectedPoints);
@@ -619,6 +619,15 @@ function preserveImportedProjectionValues(players, body = {}) {
       projection
     };
   });
+}
+
+function isProjectionLockedImport(body = {}) {
+  return Boolean(
+    body.preserve_imported_projection ||
+    body.preserve_projection ||
+    body.source === "private_projection_csv" ||
+    body.source === "projection_csv"
+  );
 }
 
 function importedProjectionKeys(row) {
