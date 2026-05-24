@@ -81,6 +81,9 @@ function prepareCandidates(players, options) {
   const minProjectedMinutes = sport === "nba"
     ? safeNum(options.min_projected_minutes || options.minProjectedMinutes, 15)
     : safeNum(options.min_projected_minutes || options.minProjectedMinutes, 0);
+  const minProjection = sport === "nba"
+    ? safeNum(options.min_projection || options.minProjection, 10)
+    : safeNum(options.min_projection || options.minProjection, 0);
   const slateType = String(options.slate_type || options.slateType || "").toLowerCase();
   const defaultPoolLimit = slateType === "showdown" ? 42 : 70;
   const poolLimit = clampInt(options.pool_limit || options.poolLimit || defaultPoolLimit, 10, 150);
@@ -88,6 +91,7 @@ function prepareCandidates(players, options) {
   return players
     .filter((player) => !excludes.has(normalizeName(player.player_name)))
     .filter((player) => safeNum(player.salary) > 0 && safeNum(player.projection) > 0)
+    .filter((player) => safeNum(player.projection) >= minProjection)
     .filter((player) => sport !== "nba" || safeNum(player.projected_minutes) >= minProjectedMinutes)
     .filter((player) => locks.has(normalizeName(player.player_name)) || safeNum(player.ownership) <= maxPlayerOwnership)
     .map((player) => ({

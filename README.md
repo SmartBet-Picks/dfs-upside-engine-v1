@@ -288,6 +288,7 @@ $body = @{
   simulations = 500
   min_unique_players = 3
   min_projected_minutes = 15
+  min_projection = 10
 } | ConvertTo-Json -Depth 10
 
 $result = Invoke-RestMethod `
@@ -319,6 +320,7 @@ excludes: player names to remove
 pool_limit: max player pool size
 min_unique_players: minimum different player names between accepted lineups, use 3 or 4
 min_projected_minutes: NBA-only lineup eligibility filter, default 15
+min_projection: NBA-only lineup eligibility filter, default 10 fantasy points
 ```
 
 The optimizer uses the engine grades in its decisions:
