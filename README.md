@@ -235,6 +235,25 @@ GET /showdown-flex?sport=nfl&slate_type=showdown
 DELETE /clear-slate?sport=mlb&slate_type=classic
 ```
 
+## Entry-Aware Optimizer
+
+`POST /api/optimize` accepts entry-aware inputs for tighter submission strategy:
+
+```json
+{
+  "sport": "nba",
+  "slate_type": "showdown",
+  "site": "draftkings",
+  "lineup_count": 50,
+  "entries_played": 12,
+  "field_size": 18342
+}
+```
+
+- `lineup_count`: total lineups generated.
+- `entries_played`: how many lineups you plan to submit.
+- `field_size`: contest size used to tune profile aggressiveness.
+
 ## Website Projection Feed
 
 Use this endpoint for your website or Shopify embed:
