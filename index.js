@@ -197,6 +197,7 @@ app.post("/api/optimize", asyncHandler(async (req, res) => {
     objective: req.body?.objective || "balanced",
     lineup_count: lineups.length,
     entries_played: entryPortfolio.entries_played,
+    contest_max_entries: entryPortfolio.contest_max_entries,
     field_size: entryPortfolio.field_size,
     entry_profile: entryPortfolio.entry_profile,
     recommended_submissions: entryPortfolio.recommended,

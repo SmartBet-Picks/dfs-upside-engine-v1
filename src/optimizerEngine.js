@@ -31,7 +31,8 @@ export function optimizeLineups(players, options = {}) {
 }
 
 export function buildEntryPortfolio(lineups = [], options = {}) {
-  const entriesPlayed = clampInt(options.entries_played ?? options.entriesPlayed ?? lineups.length, 1, Math.max(1, lineups.length || 1));
+  const contestMaxEntries = clampInt(options.contest_max_entries ?? options.contestMaxEntries ?? options.lineup_count ?? options.lineupCount ?? lineups.length, 1, 150);
+  const entriesPlayed = clampInt(options.entries_played ?? options.entriesPlayed ?? contestMaxEntries, 1, Math.max(1, lineups.length || 1));
   const fieldSize = clampInt(options.field_size ?? options.fieldSize ?? 5000, 2, 500000);
   const profile = resolveEntryProfile(entriesPlayed, fieldSize);
   const ranked = [...lineups].sort((a, b) => entryAwareScore(b, profile) - entryAwareScore(a, profile));
@@ -40,6 +41,7 @@ export function buildEntryPortfolio(lineups = [], options = {}) {
 
   return {
     entries_played: entriesPlayed,
+    contest_max_entries: contestMaxEntries,
     field_size: fieldSize,
     entry_profile: profile.name,
     recommended,

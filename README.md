@@ -245,12 +245,14 @@ DELETE /clear-slate?sport=mlb&slate_type=classic
   "slate_type": "showdown",
   "site": "draftkings",
   "lineup_count": 50,
+  "contest_max_entries": 150,
   "entries_played": 12,
   "field_size": 18342
 }
 ```
 
 - `lineup_count`: total lineups generated.
+- `contest_max_entries`: max allowed entries in the contest (used as default for `entries_played` when omitted).
 - `entries_played`: how many lineups you plan to submit.
 - `field_size`: contest size used to tune profile aggressiveness.
 
@@ -332,6 +334,7 @@ Optimizer options:
 ```text
 objective: balanced, projection, ceiling, leverage, contrarian, single_entry, contest_fit, showdown
 lineup_count: number of lineups to return
+contest_max_entries: max allowed entries in the target contest
 salary_cap: salary cap
 simulations: simulation count
 locks: player names to force in
