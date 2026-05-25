@@ -30,6 +30,23 @@ export function optimizeLineups(players, options = {}) {
   return attachSimulations(lineups, simCount);
 }
 
+export function buildEntryPortfolio(lineups = [], options = {}) {
+  const entriesPlayed = clampInt(options.entries_played ?? options.entriesPlayed ?? lineups.length, 1, Math.max(1, lineups.length || 1));
+  const fieldSize = clampInt(options.field_size ?? options.fieldSize ?? 5000, 2, 500000);
+  const profile = resolveEntryProfile(entriesPlayed, fieldSize);
+  const ranked = [...lineups].sort((a, b) => entryAwareScore(b, profile) - entryAwareScore(a, profile));
+  const recommended = ranked.slice(0, entriesPlayed).map((lineup, index) => ({ ...lineup, submit_rank: index + 1, entry_aware_score: round(entryAwareScore(lineup, profile)) }));
+  const alternates = ranked.slice(entriesPlayed).map((lineup) => ({ ...lineup, entry_aware_score: round(entryAwareScore(lineup, profile)) }));
+
+  return {
+    entries_played: entriesPlayed,
+    field_size: fieldSize,
+    entry_profile: profile.name,
+    recommended,
+    alternates
+  };
+}
+
 export function lineupsToCsv(lineups = []) {
   const headers = [
     "rank",
@@ -326,6 +343,22 @@ function lineupObjective(lineup, objective) {
   if (objective === "contest_fit") return lineup.projection * 0.3 + lineup.upside * 0.18 + lineup.leverage * 0.18 + lineup.strategy * 0.34 - lineup.fakeChalkCount * 5;
   if (objective === "showdown") return lineup.projection * 0.34 + lineup.ceiling * 0.18 + lineup.strategy * 0.34 + lineup.leverage * 0.14 - lineup.fakeChalkCount * 5;
   return lineup.projection * 0.34 + lineup.ceiling * 0.18 + lineup.upside * 0.15 + lineup.leverage * 0.13 + lineup.strategy * 0.2 - lineup.ownership * 0.04 - lineup.fakeChalkCount * 3;
+}
+
+function resolveEntryProfile(entriesPlayed, fieldSize) {
+  if (entriesPlayed <= 3) return { name: "tight", volatilityWeight: -0.16, ownershipWeight: -0.08, leverageWeight: 0.12, projectionWeight: 0.42 };
+  if (entriesPlayed <= 20) return { name: "balanced", volatilityWeight: -0.04, ownershipWeight: -0.03, leverageWeight: 0.16, projectionWeight: 0.34 };
+  if (fieldSize >= 20000) return { name: "max_upside", volatilityWeight: 0.06, ownershipWeight: -0.01, leverageWeight: 0.25, projectionWeight: 0.26 };
+  return { name: "portfolio", volatilityWeight: 0.03, ownershipWeight: -0.02, leverageWeight: 0.2, projectionWeight: 0.3 };
+}
+
+function entryAwareScore(lineup, profile) {
+  return safeNum(lineup.objective_score) * 0.52
+    + safeNum(lineup.projection) * profile.projectionWeight
+    + safeNum(lineup.leverage) * profile.leverageWeight
+    + safeNum(lineup.ownership) * profile.ownershipWeight
+    + safeNum(lineup.volatility) * profile.volatilityWeight
+    - safeNum(lineup.fake_chalk_count) * 2.2;
 }
 
 function playerStrategyScore(player, slot) {

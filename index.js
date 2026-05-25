@@ -5,7 +5,7 @@ import { getSupabase, insertScanLog } from "./src/supabaseClient.js";
 import { CONTEST_TYPES, SUPPORTED_SPORTS, contestFitMatches, inferContestType, normalizeSite, normalizeSlateType, normalizeSport } from "./src/contestRules.js";
 import { LegalDataSourceError, sourceHealth, mergeProjectionRows, validateLegalDataSources } from "./src/legalDataClient.js";
 import { applyOwnership } from "./src/ownershipEngine.js";
-import { lineupsToCsv, optimizeLineups } from "./src/optimizerEngine.js";
+import { buildEntryPortfolio, lineupsToCsv, optimizeLineups } from "./src/optimizerEngine.js";
 import { rankForContest, scorePlayers } from "./src/scoringEngine.js";
 import { calculateShowdownScores } from "./src/showdownEngine.js";
 import { sportAdapters } from "./src/sportAdapters/index.js";
@@ -183,6 +183,7 @@ app.post("/api/optimize", asyncHandler(async (req, res) => {
     slate_type,
     site
   });
+  const entryPortfolio = buildEntryPortfolio(lineups, req.body || {});
   const exportId = createExportId();
   const csv = lineupsToCsv(lineups);
   lineupExports.set(exportId, { csv, createdAt: Date.now() });
@@ -195,6 +196,11 @@ app.post("/api/optimize", asyncHandler(async (req, res) => {
     date: req.body?.date || null,
     objective: req.body?.objective || "balanced",
     lineup_count: lineups.length,
+    entries_played: entryPortfolio.entries_played,
+    field_size: entryPortfolio.field_size,
+    entry_profile: entryPortfolio.entry_profile,
+    recommended_submissions: entryPortfolio.recommended,
+    alternates: entryPortfolio.alternates,
     download_url: `/api/lineups/${exportId}.csv`,
     lineups
   });
