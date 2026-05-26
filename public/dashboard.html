@@ -31,14 +31,21 @@
     <h2>Public Output</h2>
     <div class='filters'>
       <input id='search' placeholder='Search player'>
-      <select id='tierFilter'><option value=''>All tiers</option></select>
-      <select id='roleFilter'><option value=''>All roles</option></select>
-      <select id='contestFilter'><option value=''>All contest fits</option></select>
-      <select id='teamFilter'><option value=''>All teams</option></select>
-      <select id='sort'><option value='confidenceRating'>Confidence</option><option value='boomScore'>Boom Score</option><option value='ownershipLeverageScore'>Leverage</option><option value='captainScore'>Captain</option><option value='flexScore'>Flex</option><option value='salary'>Salary</option></select>
+      <select id='tierFilter' aria-label='Tier filter'><option value=''>Tier: All</option></select>
+      <select id='roleFilter' aria-label='Role filter'><option value=''>Role: All</option></select>
+      <select id='contestFilter' aria-label='Contest filter'><option value=''>Contest: All</option></select>
+      <select id='teamFilter' aria-label='Team filter'><option value=''>Team: All</option></select>
+      <select id='sort' aria-label='Sort by'>
+        <option value='confidenceRating'>Sort: Confidence</option>
+        <option value='boomScore'>Sort: Boom Score</option>
+        <option value='ownershipLeverageScore'>Sort: Leverage</option>
+        <option value='captainScore'>Sort: Captain</option>
+        <option value='flexScore'>Sort: Flex</option>
+        <option value='salary'>Sort: Salary</option>
+      </select>
     </div>
     <div id='status'></div>
-    <div class='tableWrap'><table><thead><tr><th>Player</th><th>Team</th><th>Pos</th><th>Salary</th><th>Role</th><th>Contest Fit</th><th>Tier</th><th>Conf</th><th>Boom</th><th>Bust</th><th>Lev</th><th>Cap</th><th>Flex</th><th>Value</th><th>Explanation</th></tr></thead><tbody id='body'></tbody></table></div>
+    <div class='tableWrap'><table><thead><tr><th data-sort='playerName'>Player</th><th>Team</th><th>Pos</th><th data-sort='salary'>Salary</th><th>Role</th><th>Contest Fit</th><th>Tier</th><th data-sort='confidenceRating'>Conf</th><th data-sort='boomScore'>Boom</th><th data-sort='bustRisk'>Bust</th><th data-sort='ownershipLeverageScore'>Lev</th><th data-sort='captainScore'>Cap</th><th data-sort='flexScore'>Flex</th><th>Value</th><th>Explanation</th></tr></thead><tbody id='body'></tbody></table></div>
   </section>
 </main>
 <script src='/public/dashboard.js'></script>
