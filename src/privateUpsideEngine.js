@@ -22,7 +22,7 @@ const COLUMN_ALIASES = {
 const state = { latest: null };
 
 export function requireAdmin(req, res, next) {
-  if (!ADMIN_TOKEN) return res.status(500).json({ error: true, message: "ADMIN_API_TOKEN not configured." });
+  if (!ADMIN_TOKEN) return res.status(503).json({ error: true, message: "Admin runner is temporarily unavailable." });
   if (req.headers["x-admin-token"] !== ADMIN_TOKEN) return res.status(401).json({ error: true, message: "Unauthorized admin token." });
   next();
 }
