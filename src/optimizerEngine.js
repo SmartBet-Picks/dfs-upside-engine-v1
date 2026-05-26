@@ -102,7 +102,7 @@ function prepareCandidates(players, options) {
     : safeNum(options.min_projected_minutes || options.minProjectedMinutes, 0);
   const minProjection = sport === "nba"
     ? safeNum(options.min_projection || options.minProjection, 10)
-    : safeNum(options.min_projection || options.minProjection, 0);
+    : safeNum(options.min_projection || options.minProjection, 3);
   const slateType = String(options.slate_type || options.slateType || "").toLowerCase();
   const defaultPoolLimit = slateType === "showdown" ? 42 : 70;
   const poolLimit = clampInt(options.pool_limit || options.poolLimit || defaultPoolLimit, 10, 150);
