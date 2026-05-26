@@ -40,11 +40,29 @@ export function runPrivateUpsideEngine(req, res) {
   const { rows, diagnostics } = parseCsv(csv);
   if (!rows.length) return res.status(400).json({ error: true, message: "CSV contains no data rows." });
   const mapped = mapRows(rows);
-  const scored = scoreRows(mapped, { slateType, contestType, maxEntries, lineupsPlaying, pctPaidToFirst });
+  const { eligiblePlayers, excludedPlayers } = splitEligiblePlayers(mapped);
+  const scored = scoreRows(eligiblePlayers, { slateType, contestType, maxEntries, lineupsPlaying, pctPaidToFirst });
   const publicResult = scored.map(toPublicResult);
   const adminResult = scored.map((p) => showRawAdminData ? p : toPublicResult(p));
 
-  state.latest = { metadata: { date, sport, platform, slateType, contestType, maxEntries: toNullableNumber(maxEntries), lineupsPlaying: toNullableNumber(lineupsPlaying), pctPaidToFirst: toNullableNumber(pctPaidToFirst), generatedAt: new Date().toISOString(), csvDiagnostics: diagnostics }, publicResult, adminResult };
+  state.latest = {
+    metadata: {
+      date,
+      sport,
+      platform,
+      slateType,
+      contestType,
+      maxEntries: toNullableNumber(maxEntries),
+      lineupsPlaying: toNullableNumber(lineupsPlaying),
+      pctPaidToFirst: toNullableNumber(pctPaidToFirst),
+      generatedAt: new Date().toISOString(),
+      csvDiagnostics: diagnostics,
+      excludedPlayers: excludedPlayers.map(({ id, name, team, position, projection, minutes, exclusionReason }) => ({ id, name, team, position, projection, minutes, exclusionReason })),
+      excludedPlayerCount: excludedPlayers.length
+    },
+    publicResult,
+    adminResult
+  };
   res.json({ ...state.latest, adminRawIncluded: Boolean(showRawAdminData) });
 }
 
@@ -171,6 +189,20 @@ function mapRows(rows) {
   }));
 }
 function num(v){const n=Number(String(v||"").replace(/[%$]/g,"")); return Number.isFinite(n)?n:0;}
+function splitEligiblePlayers(rows) {
+  const excludedPlayers = [];
+  const eligiblePlayers = [];
+  rows.forEach((row) => {
+    const noProjection = row.projection <= 0;
+    const noMinutes = row.minutes <= 0;
+    if (noProjection && noMinutes) {
+      excludedPlayers.push({ ...row, exclusionReason: "Excluded: no projected fantasy points and no projected minutes." });
+      return;
+    }
+    eligiblePlayers.push(row);
+  });
+  return { eligiblePlayers, excludedPlayers };
+}
 function bool(v){return /^(1|true|yes|y|starter)$/i.test(String(v||"").trim());}
 function norm(rows,key,invert=false){const vals=rows.map(r=>r[key]);const min=Math.min(...vals),max=Math.max(...vals),d=max-min||1;rows.forEach(r=>{const s=((r[key]-min)/d)*100;r[`${key}_n`]=Math.max(0,Math.min(100,invert?100-s:s));});}
 function scoreRows(rows,{slateType,contestType,maxEntries,lineupsPlaying,pctPaidToFirst}){const settings = buildContestSettings({ maxEntries, lineupsPlaying, pctPaidToFirst });["projection","ceiling","value","ownership","boom","bust","salary","minutes","floor","game_total","team_total","pace"].forEach(k=>norm(rows,k,k==="ownership"||k==="salary"||k==="bust"));
