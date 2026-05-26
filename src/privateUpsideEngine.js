@@ -121,7 +121,7 @@ const bustRisk=bustRiskScore>=67?"High":bustRiskScore>=40?"Medium":"Low";
 const lowMinuteRisk = r.minutes > 0 && r.minutes < 8;
 const lowProjectionRisk = r.projection > 0 && r.projection < 4;
 const starterSignal = inferredStarter || r.minutes >= 18 || r.projection_n >= 58 || r.salary_n >= 55;
-const severePunt = (r.minutes > 0 && r.minutes < 6) || (r.projection > 0 && r.projection < 3);
+const severePunt = (r.minutes > 0 && r.minutes < 8) || (r.projection > 0 && r.projection < 3);
 const nonViablePunt = severePunt || ((lowMinuteRisk || lowProjectionRisk) && !starterSignal);
 const playoffStudSignal = r.salary_n > 68 && r.projection_n > 70;
 const environmentFloor = environmentScore >= 62;
