@@ -21,4 +21,8 @@ th.sorted{color:#9ed6ff}
 .role-fade{background:rgba(239,83,80,.25);color:#ffc9c8}
 #status{margin-top:8px}
 .error{color:var(--red)}
+.insights{display:grid;gap:8px;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));margin:10px 0}
+.insightCard{background:#101a2b;border:1px solid var(--line);border-radius:10px;padding:10px}
+.insightLabel{font-size:12px;opacity:.8;text-transform:uppercase;letter-spacing:.04em}
+.insightValue{font-weight:700;font-size:15px;margin-top:4px}
 @media(max-width:700px){.shell{padding:10px}}

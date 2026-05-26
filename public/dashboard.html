@@ -29,6 +29,7 @@
 
   <section class='panel'>
     <h2>Public Output</h2>
+    <div id='insights' class='insights' aria-live='polite'></div>
     <div class='filters'>
       <input id='search' placeholder='Search player'>
       <select id='tierFilter' aria-label='Tier filter'><option value=''>Tier: All</option></select>
@@ -41,11 +42,12 @@
         <option value='ownershipLeverageScore'>Sort: Leverage</option>
         <option value='captainScore'>Sort: Captain</option>
         <option value='flexScore'>Sort: Flex</option>
+        <option value='eliteScore'>Sort: Elite Score</option>
         <option value='salary'>Sort: Salary</option>
       </select>
     </div>
     <div id='status'></div>
-    <div class='tableWrap'><table><thead><tr><th data-sort='playerName'>Player</th><th>Team</th><th>Pos</th><th data-sort='salary'>Salary</th><th>Role</th><th>Contest Fit</th><th>Tier</th><th data-sort='confidenceRating'>Conf</th><th data-sort='boomScore'>Boom</th><th data-sort='bustRisk'>Bust</th><th data-sort='ownershipLeverageScore'>Lev</th><th data-sort='captainScore'>Cap</th><th data-sort='flexScore'>Flex</th><th>Value</th><th>Explanation</th></tr></thead><tbody id='body'></tbody></table></div>
+    <div class='tableWrap'><table><thead><tr><th data-sort='playerName'>Player</th><th>Team</th><th>Pos</th><th data-sort='salary'>Salary</th><th>Role</th><th>Contest Fit</th><th>Tier</th><th data-sort='confidenceRating'>Conf</th><th data-sort='boomScore'>Boom</th><th data-sort='bustRisk'>Bust</th><th data-sort='ownershipLeverageScore'>Lev</th><th data-sort='captainScore'>Cap</th><th data-sort='flexScore'>Flex</th><th data-sort='eliteScore'>Elite</th><th>Value</th><th>Explanation</th></tr></thead><tbody id='body'></tbody></table></div>
   </section>
 </main>
 <script src='/public/dashboard.js'></script>
