@@ -1,7 +1,7 @@
-const els = Object.fromEntries(["adminToken","csvFile","date","sport","platform","slateType","contestType","showRaw","runBtn","search","tierFilter","roleFilter","contestFilter","teamFilter","sort","body","status"].map(id=>[id,document.getElementById(id)]));
+const els = Object.fromEntries(["adminToken","csvFile","date","sport","platform","slateType","contestType","maxEntries","lineupsPlaying","pctPaidToFirst","showRaw","runBtn","search","tierFilter","roleFilter","contestFilter","teamFilter","sort","body","status"].map(id=>[id,document.getElementById(id)]));
 els.date.value=new Date().toISOString().slice(0,10); let players=[];
 els.runBtn.onclick=async()=>{const file=els.csvFile.files[0]; if(!file) return setStatus('Upload CSV first',true); const csv=await file.text(); setStatus('Running...');
-const payload={csv,date:els.date.value,sport:els.sport.value.toLowerCase(),platform:els.platform.value.toLowerCase(),slateType:els.slateType.value.toLowerCase(),contestType:els.contestType.value,showRawAdminData:els.showRaw.checked};
+const payload={csv,date:els.date.value,sport:els.sport.value.toLowerCase(),platform:els.platform.value.toLowerCase(),slateType:els.slateType.value.toLowerCase(),contestType:els.contestType.value,maxEntries:numOrNull(els.maxEntries.value),lineupsPlaying:numOrNull(els.lineupsPlaying.value),pctPaidToFirst:numOrNull(els.pctPaidToFirst.value),showRawAdminData:els.showRaw.checked};
 const r=await fetch('/admin/upside-engine/run',{method:'POST',headers:{'content-type':'application/json','x-admin-token':els.adminToken.value},body:JSON.stringify(payload)}); const j=await r.json(); if(!r.ok) return setStatus(j.message||'Run failed',true); setStatus(`Engine complete: ${j.publicResult.length} players.`); players=j.publicResult; hydrateFilters(); render(); };
 ["search","tierFilter","roleFilter","contestFilter","teamFilter","sort"].forEach(k=>els[k].oninput=render);
 async function loadPublic(){const r=await fetch('/api/upside/public'); if(!r.ok) return; const j=await r.json(); players=j.players||[]; hydrateFilters(); render();}
@@ -12,3 +12,5 @@ const s=els.sort.value; rows.sort((a,b)=>Number(b[s]||0)-Number(a[s]||0)); els.b
 function row(p){return `<tr class='${p.bestRole.toLowerCase()}'><td>${p.playerName}</td><td>${p.team||''}</td><td>${p.position||''}</td><td>${p.salary}</td><td>${p.bestRole}</td><td>${p.contestFit}</td><td>${p.tier}</td><td>${p.confidenceRating}</td><td>${p.boomScore}</td><td>${p.bustRisk}</td><td>${p.ownershipLeverageScore}</td><td>${p.captainScore}</td><td>${p.flexScore}</td><td>${p.topValueTag}</td><td>${p.explanation}</td></tr>`;}
 function setStatus(m,e){els.status.textContent=m; els.status.className=e?'error':'';}
 loadPublic();
+
+function numOrNull(v){const n=Number(v); return Number.isFinite(n)?n:null;}
