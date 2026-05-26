@@ -31,6 +31,7 @@ export function calculatePlayerScores(player, slateContext = {}) {
   const ceilingScore = clamp((ceiling / ceilingMark) * 100);
   const projectionScore = clamp((projection / (ceilingMark * 0.65)) * 100);
   const volatilityScore = clamp(((ceiling - floor) / Math.max(projection, 1)) * 42 + bustPct * 0.45);
+  const consistencyScore = clamp((floor / Math.max(projection, 1)) * 70 + (100 - volatilityScore) * 0.3);
   const ownershipPenalty = ownership <= 18 ? 1 : ownership <= 30 ? 0.9 : ownership <= 45 ? 0.78 : 0.62;
   const largeFieldVolatilityBoost = slateSize >= 80 ? volatilityScore * 0.08 : slateSize >= 40 ? volatilityScore * 0.04 : 0;
 
@@ -51,6 +52,8 @@ export function calculatePlayerScores(player, slateContext = {}) {
     (100 - duplicationRiskProxy(player, slateContext)) * 0.05 -
     Math.max(0, ownership - boomPct) * 0.35
   );
+  const ceilingRealizationScore = clamp((ceiling / Math.max(projection, 1)) * 36 + boomPct * 0.44 + (100 - bustPct) * 0.2);
+  const contrarianEdgeScore = clamp(leverageScore * 0.62 + (100 - ownership) * 0.28 + ceilingRealizationScore * 0.1);
 
   const fakeChalk = isFakeChalk({ ownership, boomPct, ceilingScore, bustPct, salaryValueScore });
   const singleEntryGrade = gradeSingleEntry({
@@ -72,9 +75,13 @@ export function calculatePlayerScores(player, slateContext = {}) {
     ...player,
     salary_value_score: round(salaryValueScore),
     volatility_score: round(volatilityScore),
+    consistency_score: round(consistencyScore),
+    ceiling_realization_score: round(ceilingRealizationScore),
+    contrarian_edge_score: round(contrarianEdgeScore),
     upside_score: round(upsideScore),
     leverage_score: round(leverageScore),
     contest_fit_tag: contestFitTag,
+    recommended_exposure: exposureBand({ upsideScore, leverageScore, ownership, consistencyScore, fakeChalk }),
     recommended_field_size: recommendedFieldSize,
     single_entry_grade: singleEntryGrade,
     small_field_grade: gradeField(upsideScore, leverageScore, volatilityScore, fakeChalk, "small"),
@@ -151,6 +158,15 @@ function contestFit({ upsideScore, leverageScore, salaryValueScore, ownership, v
   if (upsideScore >= 66 && ownership <= 22) return "Small/Mid-Field GPP";
   if (salaryValueScore >= 70 && volatilityScore <= 58) return "Cash/Single Entry Value";
   return ownership >= 30 ? "Chalk With Merit" : "Tournament Viable";
+}
+
+function exposureBand({ upsideScore, leverageScore, ownership, consistencyScore, fakeChalk }) {
+  if (fakeChalk.warning && leverageScore < 58) return "0-5% (Underweight/Fade)";
+  if (upsideScore >= 82 && leverageScore >= 74 && ownership <= 26) return "25-40% (Core Overweight)";
+  if (upsideScore >= 74 && consistencyScore >= 62) return "15-25% (Strong Core)";
+  if (leverageScore >= 70 && ownership <= 20) return "10-20% (Leverage Build)";
+  if (upsideScore >= 60) return "5-12% (Rotation)";
+  return "0-8% (Thin MME only)";
 }
 
 function gradeField(upsideScore, leverageScore, volatilityScore, fakeChalk, fieldType) {
