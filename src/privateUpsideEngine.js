@@ -37,13 +37,14 @@ export function requireAdmin(req, res, next) {
 export function runPrivateUpsideEngine(req, res) {
   const { csv, date, sport, platform, slateType, contestType, maxEntries, lineupsPlaying, pctPaidToFirst, showRawAdminData = false } = req.body || {};
   if (!csv || !date || !sport || !platform || !slateType || !contestType) return res.status(400).json({ error: true, message: "Missing required fields." });
-  const rows = parseCsv(csv);
+  const { rows, diagnostics } = parseCsv(csv);
+  if (!rows.length) return res.status(400).json({ error: true, message: "CSV contains no data rows." });
   const mapped = mapRows(rows);
   const scored = scoreRows(mapped, { slateType, contestType, maxEntries, lineupsPlaying, pctPaidToFirst });
   const publicResult = scored.map(toPublicResult);
   const adminResult = scored.map((p) => showRawAdminData ? p : toPublicResult(p));
 
-  state.latest = { metadata: { date, sport, platform, slateType, contestType, maxEntries: toNullableNumber(maxEntries), lineupsPlaying: toNullableNumber(lineupsPlaying), pctPaidToFirst: toNullableNumber(pctPaidToFirst), generatedAt: new Date().toISOString() }, publicResult, adminResult };
+  state.latest = { metadata: { date, sport, platform, slateType, contestType, maxEntries: toNullableNumber(maxEntries), lineupsPlaying: toNullableNumber(lineupsPlaying), pctPaidToFirst: toNullableNumber(pctPaidToFirst), generatedAt: new Date().toISOString(), csvDiagnostics: diagnostics }, publicResult, adminResult };
   res.json({ ...state.latest, adminRawIncluded: Boolean(showRawAdminData) });
 }
 
@@ -53,16 +54,92 @@ export function getLatestPublicUpside(req, res) {
 }
 
 function parseCsv(csv) {
-  const lines = csv.trim().split(/\r?\n/).filter(Boolean);
-  const headers = splitCsvLine(lines[0]).map(normalizeKey);
-  return lines.slice(1).map((line) => {
-    const vals = splitCsvLine(line);
+  const records = parseCsvRecords(csv);
+  if (!records.length) return { rows: [], diagnostics: { required: [], unknownHeaders: [], missingByRow: [], duplicatePlayers: [] } };
+  const headers = records[0].map(normalizeKey);
+  const required = ["name", "salary", "projection"];
+  const requiredDiagnostics = required.map((field) => ({ field, found: hasHeaderAlias(headers, field) }));
+  const missingRequired = requiredDiagnostics.filter((entry) => !entry.found).map((entry) => entry.field);
+  if (missingRequired.length) {
+    throw new Error(`Missing required CSV columns: ${missingRequired.join(", ")}.`);
+  }
+  const rows = records.slice(1).map((vals) => {
     const row = {};
     headers.forEach((h, i) => (row[h] = vals[i] ?? ""));
     return row;
-  });
+  }).filter((row) => Object.values(row).some((value) => String(value || "").trim() !== ""));
+
+  const unknownHeaders = headers.filter((header) => !Object.keys(COLUMN_ALIASES).some((canonical) => COLUMN_ALIASES[canonical].some((alias) => header === normalizeKey(alias))));
+  const missingByRow = rows.flatMap((row, index) => required.map((field) => ({ field, row: index + 2, missing: !String(findField(row, field) || "").trim() }))).filter((entry) => entry.missing);
+  const duplicatePlayers = findDuplicatePlayers(rows);
+
+  return {
+    rows,
+    diagnostics: {
+      required: requiredDiagnostics,
+      unknownHeaders,
+      missingByRow,
+      duplicatePlayers
+    }
+  };
 }
-function splitCsvLine(line) { const out=[]; let cur="",q=false; for(let i=0;i<line.length;i++){const c=line[i]; if(c==='"'){q=!q; continue;} if(c===','&&!q){out.push(cur.trim()); cur="";} else cur+=c;} out.push(cur.trim()); return out; }
+function parseCsvRecords(csv) {
+  const text = String(csv || "").replace(/^﻿/, "");
+  const rows = [];
+  let row = [];
+  let value = "";
+  let inQuotes = false;
+  for (let i = 0; i < text.length; i += 1) {
+    const c = text[i];
+    const n = text[i + 1];
+    if (c === '"') {
+      if (inQuotes && n === '"') {
+        value += '"';
+        i += 1;
+      } else {
+        inQuotes = !inQuotes;
+      }
+      continue;
+    }
+    if (!inQuotes && c === ',') {
+      row.push(value.trim());
+      value = "";
+      continue;
+    }
+    if (!inQuotes && (c === "\n" || c === "\r")) {
+      if (c === "\r" && n === "\n") i += 1;
+      row.push(value.trim());
+      if (row.some((cell) => String(cell).length)) rows.push(row);
+      row = [];
+      value = "";
+      continue;
+    }
+    value += c;
+  }
+  if (value.length || row.length) {
+    row.push(value.trim());
+    if (row.some((cell) => String(cell).length)) rows.push(row);
+  }
+  return rows;
+}
+function hasHeaderAlias(headers, canonical) {
+  return headers.some((header) => COLUMN_ALIASES[canonical].some((alias) => header === normalizeKey(alias)));
+}
+function findDuplicatePlayers(rows) {
+  const seen = new Map();
+  const duplicates = [];
+  rows.forEach((row, index) => {
+    const key = [findField(row, "name"), findField(row, "team"), findField(row, "position")].map((v) => normalizeKey(v || "")).join("|");
+    if (!key.replace(/\|/g, "")) return;
+    const existing = seen.get(key);
+    if (existing) {
+      duplicates.push({ key, firstRow: existing, duplicateRow: index + 2 });
+    } else {
+      seen.set(key, index + 2);
+    }
+  });
+  return duplicates;
+}
 function normalizeKey(key) { return String(key || "").toLowerCase().replace(/[^a-z0-9]+/g, "_"); }
 function findField(row, canonical) { const aliases = COLUMN_ALIASES[canonical]; const key = Object.keys(row).find((k) => aliases.some((a) => k.includes(a))); return row[key] ?? ""; }
 function mapRows(rows) {
