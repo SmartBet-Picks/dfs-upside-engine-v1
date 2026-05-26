@@ -2,7 +2,12 @@ const clamp = (value, min = 0, max = 100) => Math.max(min, Math.min(max, Number.
 const safeNum = (value, fallback = 0) => Number.isFinite(Number(value)) ? Number(value) : fallback;
 
 export function calculateShowdownScores(players, slateContext = {}) {
-  return players.map((player) => {
+  const rankedByCeiling = [...players]
+    .map((player, idx) => ({ idx, ceiling: safeNum(player.ceiling, safeNum(player.projection) * 1.8) }))
+    .sort((a, b) => b.ceiling - a.ceiling);
+  const topCeilingIdx = new Set(rankedByCeiling.slice(0, 3).map((entry) => entry.idx));
+
+  return players.map((player, idx) => {
     const projection = safeNum(player.projection);
     const ceiling = safeNum(player.ceiling, projection * 1.8);
     const floor = safeNum(player.floor, projection * 0.55);
@@ -11,17 +16,29 @@ export function calculateShowdownScores(players, slateContext = {}) {
     const leverage = safeNum(player.leverage_score);
     const roleStability = clamp((floor / Math.max(projection, 1)) * 100);
     const rawCeilingScore = normalizeWithinSlate(ceiling, players, "ceiling");
+    const projectionStrength = normalizeWithinSlate(projection, players, "projection");
     const salaryRelief = clamp(100 - normalizeWithinSlate(safeNum(player.salary), players, "salary"));
+    const salaryAdjustedUpside = clamp(rawCeilingScore * 0.65 + salaryRelief * 0.35);
+    const ownershipDiscount = clamp(100 - ownership);
+    const environment = gameScriptScore(player, slateContext);
 
-    const captainScore = clamp(
-      rawCeilingScore * 0.36 +
-      upside * 0.24 +
-      leverage * 0.18 +
-      roleStability * 0.12 +
-      salaryRelief * 0.05 +
-      gameScriptScore(player, slateContext) * 0.05 -
-      Math.max(0, ownership - 35) * 0.35
+    let captainScore = clamp(
+      rawCeilingScore * 0.35 +
+      projectionStrength * 0.20 +
+      leverage * 0.15 +
+      salaryAdjustedUpside * 0.10 +
+      upside * 0.10 +
+      environment * 0.05 +
+      ownershipDiscount * 0.05
     );
+    if (topCeilingIdx.has(idx)) captainScore += 12;
+    if (leverage >= 65 && rawCeilingScore >= 70) captainScore += 8;
+    if (salaryRelief >= 55 && rawCeilingScore >= 60) captainScore += 5;
+    if (projection < 10 || roleStability < 36 || rawCeilingScore < 35) captainScore -= 14;
+    if (salaryRelief >= 72 && rawCeilingScore < 55) captainScore -= 11;
+    if (safeNum(player.salary_value_score) >= 78 && rawCeilingScore < 50) captainScore -= 9;
+    if (safeNum(player.volatility_score) >= 70 && rawCeilingScore < 58) captainScore -= 10;
+    captainScore = clamp(captainScore);
 
     const flexScore = clamp(
       projection * 1.4 +
@@ -35,12 +52,20 @@ export function calculateShowdownScores(players, slateContext = {}) {
       ...player,
       showdown_captain_score: Number(captainScore.toFixed(2)),
       showdown_flex_score: Number(flexScore.toFixed(2)),
+      captain_tier: captainTier(captainScore),
       captain_ownership_risk: captainOwnershipRisk(ownership, captainScore, leverage),
       duplication_risk: duplicationRisk(player, slateContext),
       game_script_fit: gameScriptFit(player, slateContext),
       contest_fit_tag: showdownTag(player, captainScore, flexScore, ownership, leverage)
     };
   });
+}
+function captainTier(captainScore) {
+  if (captainScore >= 75) return "Elite Captain";
+  if (captainScore >= 60) return "Strong Captain";
+  if (captainScore >= 45) return "Viable Captain";
+  if (captainScore >= 30) return "Thin Captain";
+  return "Avoid Captain";
 }
 
 function normalizeWithinSlate(value, players, key) {

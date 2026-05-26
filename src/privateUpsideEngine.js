@@ -223,11 +223,26 @@ if (hasSpread) {
 } else {
   rows.forEach((r)=>{r.spread_n=50;});
 }
+const topCeilingThreshold = [...rows].map((r)=>r.ceiling).sort((a,b)=>b-a)[2] ?? Number.POSITIVE_INFINITY;
 return rows.map((r)=>{const environmentScore=clamp(0.35*r.game_total_n+0.35*r.team_total_n+0.2*r.pace_n+0.1*r.spread_n);const confidence=clamp(0.33*r.projection_n+0.2*r.minutes_n+0.2*r.value_n+0.15*r.floor_n+0.12*environmentScore);const boomScore=clamp(0.3*r.ceiling_n+0.22*r.boom_n+0.18*r.projection_n+0.12*r.salary_n+0.1*environmentScore+0.08*r.usage_n);const bustRiskScore=clamp(0.26*(100-r.floor_n)+0.21*(100-r.value_n)+0.2*(100-r.minutes_n)+0.15*(100-r.salary_n)+0.1*(100-r.ownership_n)+0.08*(100-r.volatility_n));const leverageScore=clamp((0.42*boomScore+0.42*r.ownership_n+0.08*environmentScore+0.08*r.usage_n)*settings.leverageBoost);
 const inferredStarter = r.isStarter || r.minutes >= 26 || (r.salary_n >= 62 && r.projection_n >= 60);
-const starterCaptainBoost = inferredStarter ? 6 : -10;
-const nonStarterCptPenalty = (!inferredStarter && (r.minutes > 0 && r.minutes < 20)) ? 8 : 0;
-const captainScore=clamp(0.33*r.ceiling_n+0.24*r.projection_n+0.16*r.salary_n+0.17*leverageScore+0.1*r.usage_n+starterCaptainBoost-nonStarterCptPenalty+settings.captainBoost);const flexScore=clamp(0.32*r.value_n+0.28*r.projection_n+0.22*(100-bustRiskScore)+0.12*r.salary_n+0.06*r.minutes_n-settings.flexPenalty);
+const salaryAdjustedUpside = clamp((0.7*r.ceiling_n)+(0.3*r.salary_n));
+const ownershipDiscount = 100 - r.ownership_n;
+let captainScore=clamp(0.35*r.ceiling_n+0.20*r.projection_n+0.15*leverageScore+0.10*salaryAdjustedUpside+0.10*boomScore+0.05*environmentScore+0.05*ownershipDiscount+settings.captainBoost);
+const topCeilingPlayer = r.ceiling >= topCeilingThreshold && r.ceiling > 0;
+const strongLevCeil = leverageScore >= 65 && r.ceiling_n >= 70;
+const uniqueBuild = r.salary_n >= 48 && r.salary_n <= 72 && r.ceiling_n >= 60;
+const lowUpsidePath = r.minutes > 0 && r.minutes < 18 || r.projection > 0 && r.projection < 12 || r.ceiling > 0 && r.ceiling < 40;
+const cheapSaverOnly = r.salary_n >= 76 && r.ceiling_n < 58;
+const weakCeilingBust = bustRiskScore >= 72 && r.ceiling_n < 56;
+if (topCeilingPlayer) captainScore += 12;
+if (strongLevCeil) captainScore += 8;
+if (uniqueBuild) captainScore += 5;
+if (lowUpsidePath) captainScore -= 14;
+if (cheapSaverOnly) captainScore -= 11;
+if (weakCeilingBust) captainScore -= 10;
+captainScore=clamp(captainScore);
+const flexScore=clamp(0.34*r.value_n+0.28*r.projection_n+0.24*(100-bustRiskScore)+0.1*r.salary_n+0.04*r.minutes_n-settings.flexPenalty);
 const bustRisk=bustRiskScore>=67?"High":bustRiskScore>=40?"Medium":"Low";
 const lowMinuteRisk = r.minutes > 0 && r.minutes < 10;
 const lowProjectionRisk = r.projection > 0 && r.projection < 4;
@@ -237,13 +252,15 @@ const nonViablePunt = severePunt || ((lowMinuteRisk || lowProjectionRisk) && !st
 const playoffStudSignal = r.salary_n > 68 && r.projection_n > 70;
 const environmentFloor = environmentScore >= 62;
 const fade= nonViablePunt || (bustRiskScore>70 && boomScore<50 && !environmentFloor && !starterSignal) || (r.ownership<30?false:boomScore<55 && !playoffStudSignal && !environmentFloor && !starterSignal);
-const role = fade?"Fade": captainScore>78?"Captain": flexScore>74?"Flex": confidence>80?"Core": r.salary_n>70&&r.value_n>60?"Value": leverageScore>72?"Leverage":"Flex";
-const tier = fade?"Tier 5: Fade Candidate": boomScore>82&&captainScore>75?"Tier 1: Slate Breaker": confidence>76&&bustRisk!=="High"?"Tier 2: Strong Core": r.value_n>65?"Tier 3: Value / Salary Saver":"Tier 4: Risky Leverage";
+const captainTier = getCaptainTier(captainScore);
+const role = fade?"Fade": captainScore>=60?"Captain": flexScore>74?"Flex": confidence>80?"Core": r.salary_n>70&&r.value_n>60?"Value": leverageScore>72?"Leverage":"Flex";
+const tier = captainTier;
 const contestFit = slateType==="showdown"? (captainScore>flexScore?"Showdown":"3-Max") : contestType;
-return {...r, confidenceRating:round(confidence), contestAggression: settings.aggression, environmentScore: round(environmentScore), boomScore:round(boomScore), bustRisk, ownershipLeverageScore:round(leverageScore), captainScore:round(captainScore), flexScore:round(flexScore), topValueTag:r.value_n>75?"Yes":"No", bestRole:role, tier, contestFit, nonViablePunt, explanation:buildExplanation(role,contestFit,bustRisk,nonViablePunt,round(environmentScore))};});}
-function toPublicResult(r){return { playerName:r.name, team:r.team, position:r.position, salary:r.salary, bestRole:r.bestRole, contestFit:r.contestFit, tier:r.tier, confidenceRating:r.confidenceRating, environmentScore:r.environmentScore, boomScore:r.boomScore, bustRisk:r.bustRisk, ownershipLeverageScore:r.ownershipLeverageScore, captainScore:r.captainScore, flexScore:r.flexScore, topValueTag:r.topValueTag, explanation:r.explanation };}
+return {...r, confidenceRating:round(confidence), contestAggression: settings.aggression, environmentScore: round(environmentScore), boomScore:round(boomScore), bustRisk, ownershipLeverageScore:round(leverageScore), captainScore:round(captainScore), captainTier, flexScore:round(flexScore), topValueTag:r.value_n>75?"Yes":"No", bestRole:role, tier, contestFit, nonViablePunt, explanation:buildExplanation({ captainTier, captainScore: round(captainScore), ceilingScore: round(r.ceiling_n), leverageScore: round(leverageScore), lowUpsidePath, cheapSaverOnly, weakCeilingBust })};});}
+function toPublicResult(r){return { playerName:r.name, team:r.team, position:r.position, salary:r.salary, bestRole:r.bestRole, contestFit:r.contestFit, tier:r.tier, captainTier:r.captainTier, confidenceRating:r.confidenceRating, environmentScore:r.environmentScore, boomScore:r.boomScore, bustRisk:r.bustRisk, ownershipLeverageScore:r.ownershipLeverageScore, captainScore:r.captainScore, flexScore:r.flexScore, topValueTag:r.topValueTag, explanation:r.explanation };}
 const clamp=(n)=>Math.max(1,Math.min(100,n)); const round=(n)=>Math.round(clamp(n));
-function buildExplanation(role,fit,bust,nonViablePunt=false,environmentScore=50){ if(nonViablePunt) return `Avoid in ${fit}: projection/minutes are too low for realistic upside.`; if(role==="Fade") return `Fade candidate for ${fit} contests because the risk outweighs the upside in this game environment (${environmentScore}/100).`; if(role==="Captain") return `Strong ${fit} leverage play with Captain upside, ${bust.toLowerCase()} bust risk, and supportive game environment (${environmentScore}/100).`; if(role==="Flex") return `Better suited as a Flex play: salary efficiency is stronger than slate-breaking upside, with environment score ${environmentScore}/100.`; return `Solid ${fit} option with a balanced projection, value, risk profile, and game environment (${environmentScore}/100).`; }
+function buildExplanation({ captainTier, captainScore, ceilingScore, leverageScore, lowUpsidePath, cheapSaverOnly, weakCeilingBust }){ if(captainTier==="Elite Captain") return "Elite Captain candidate because he carries one of the strongest ceiling profiles on the slate with enough raw upside to separate from the field."; if(captainTier==="Strong Captain") return "Strong tournament Captain because the ceiling and leverage combination is better than a Flex-only salary value path."; if(captainTier==="Viable Captain") return `Viable Captain choice with playable upside (${captainScore}) but less separation than the top ceiling options.`; if(cheapSaverOnly) return "Better as Flex than Captain because the salary relief helps builds, but the player lacks true slate-breaking upside."; if(lowUpsidePath||weakCeilingBust) return "Avoid at Captain because the projection/minutes profile is too thin to win the multiplier spot."; return `Thin Captain option: the current ceiling (${ceilingScore}) and leverage (${leverageScore}) profile is not strong enough for reliable showdown Captain exposure.`; }
+function getCaptainTier(captainScore){if(captainScore>=75) return "Elite Captain"; if(captainScore>=60) return "Strong Captain"; if(captainScore>=45) return "Viable Captain"; if(captainScore>=30) return "Thin Captain"; return "Avoid Captain";}
 
 function toNullableNumber(v){const n=Number(v); return Number.isFinite(n)?n:null;}
 function recommendBestCaptain(scoredRows, slateType) {
