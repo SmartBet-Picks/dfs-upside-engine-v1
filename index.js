@@ -9,6 +9,7 @@ import { buildEntryPortfolio, lineupsToCsv, optimizeLineups } from "./src/optimi
 import { rankForContest, scorePlayers } from "./src/scoringEngine.js";
 import { calculateShowdownScores } from "./src/showdownEngine.js";
 import { sportAdapters } from "./src/sportAdapters/index.js";
+import { getLatestPublicUpside, requireAdmin, runPrivateUpsideEngine } from "./src/privateUpsideEngine.js";
 
 const app = express();
 const port = Number(process.env.PORT || 3000);
@@ -51,6 +52,9 @@ app.get("/", (req, res) => {
 app.get("/dashboard", (req, res) => {
   res.sendFile("dashboard.html", { root: "public" });
 });
+
+app.post("/admin/upside-engine/run", requireAdmin, runPrivateUpsideEngine);
+app.get("/api/upside/public", getLatestPublicUpside);
 
 app.get("/health", (req, res) => {
   res.json({
