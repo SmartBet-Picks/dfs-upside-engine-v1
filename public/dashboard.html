@@ -1,2 +1,46 @@
-<!doctype html><html lang='en'><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'><title>DFS Upside Engine</title><link rel='stylesheet' href='/public/dashboard.css'></head><body><main class='shell'><h1>DFS Upside Engine</h1><section class='panel'><h2>Admin Runner (Private)</h2><input id='adminToken' placeholder='Admin API token' type='password'><input id='csvFile' type='file' accept='.csv'><div class='grid'><input id='date' type='date'><select id='sport'><option>NBA</option><option>NFL</option><option>MLB</option><option>MMA</option><option>GOLF</option><option>NASCAR</option></select><select id='platform'><option>DraftKings</option><option>FanDuel</option></select><select id='slateType'><option>Classic</option><option>Showdown</option></select><select id='contestType'><option>Single Entry</option><option>3-Max</option><option>Small Field</option><option>Large Field GPP</option><option>Mini-MAX</option><option>Showdown</option></select></div><label><input id='showRaw' type='checkbox'> Show Raw Admin Data (Private)</label><button id='runBtn'>Run DFS Upside Engine</button></section>
-<section class='panel'><h2>Public Output</h2><div class='filters'><input id='search' placeholder='Search player'><select id='tierFilter'><option value=''>All tiers</option></select><select id='roleFilter'><option value=''>All roles</option></select><select id='contestFilter'><option value=''>All contest fits</option></select><select id='teamFilter'><option value=''>All teams</option></select><select id='sort'><option value='confidenceRating'>Confidence</option><option value='boomScore'>Boom Score</option><option value='ownershipLeverageScore'>Leverage</option><option value='captainScore'>Captain</option><option value='flexScore'>Flex</option><option value='salary'>Salary</option></select></div><div id='status'></div><div class='tableWrap'><table><thead><tr><th>Player</th><th>Team</th><th>Pos</th><th>Salary</th><th>Role</th><th>Contest Fit</th><th>Tier</th><th>Conf</th><th>Boom</th><th>Bust</th><th>Lev</th><th>Cap</th><th>Flex</th><th>Value</th><th>Explanation</th></tr></thead><tbody id='body'></tbody></table></div></section></main><script src='/public/dashboard.js'></script></body></html>
+<!doctype html>
+<html lang='en'>
+<head>
+  <meta charset='utf-8'>
+  <meta name='viewport' content='width=device-width,initial-scale=1'>
+  <title>DFS Upside Engine</title>
+  <link rel='stylesheet' href='/public/dashboard.css'>
+</head>
+<body>
+<main class='shell'>
+  <h1>DFS Upside Engine</h1>
+  <section class='panel'>
+    <h2>Admin Runner (Private)</h2>
+    <input id='adminToken' placeholder='Admin API token' type='password'>
+    <input id='csvFile' type='file' accept='.csv'>
+    <div class='grid'>
+      <input id='date' type='date'>
+      <select id='sport'><option>NBA</option><option>NFL</option><option>MLB</option><option>MMA</option><option>GOLF</option><option>NASCAR</option></select>
+      <select id='platform'><option>DraftKings</option><option>FanDuel</option></select>
+      <select id='slateType'><option>Classic</option><option>Showdown</option></select>
+      <select id='contestType'><option>Single Entry</option><option>3-Max</option><option>Small Field</option><option>Large Field GPP</option><option>Mini-MAX</option><option>Showdown</option></select>
+      <input id='maxEntries' type='number' min='1' placeholder='Max entries allowed'>
+      <input id='lineupsPlaying' type='number' min='1' placeholder='Lineups playing'>
+      <input id='pctPaidToFirst' type='number' min='0' max='100' step='0.1' placeholder='% paid to first'>
+    </div>
+    <label><input id='showRaw' type='checkbox'> Show Raw Admin Data (Private)</label>
+    <button id='runBtn'>Run DFS Upside Engine</button>
+  </section>
+
+  <section class='panel'>
+    <h2>Public Output</h2>
+    <div class='filters'>
+      <input id='search' placeholder='Search player'>
+      <select id='tierFilter'><option value=''>All tiers</option></select>
+      <select id='roleFilter'><option value=''>All roles</option></select>
+      <select id='contestFilter'><option value=''>All contest fits</option></select>
+      <select id='teamFilter'><option value=''>All teams</option></select>
+      <select id='sort'><option value='confidenceRating'>Confidence</option><option value='boomScore'>Boom Score</option><option value='ownershipLeverageScore'>Leverage</option><option value='captainScore'>Captain</option><option value='flexScore'>Flex</option><option value='salary'>Salary</option></select>
+    </div>
+    <div id='status'></div>
+    <div class='tableWrap'><table><thead><tr><th>Player</th><th>Team</th><th>Pos</th><th>Salary</th><th>Role</th><th>Contest Fit</th><th>Tier</th><th>Conf</th><th>Boom</th><th>Bust</th><th>Lev</th><th>Cap</th><th>Flex</th><th>Value</th><th>Explanation</th></tr></thead><tbody id='body'></tbody></table></div>
+  </section>
+</main>
+<script src='/public/dashboard.js'></script>
+</body>
+</html>
