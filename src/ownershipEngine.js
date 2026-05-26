@@ -38,7 +38,7 @@ export function estimateOwnership(players, slateContext = {}) {
     const projectionScore = rankScore(projectionRanks.get(index), slateSize);
     const valueScore = rankScore(valueRanks.get(index), slateSize);
     const scarcityScore = 100 / Math.max(positionCounts[player.position || "UNK"] || slateSize, 1);
-    const nameProxy = popularityProxy(player.player_name);
+    const nameProxy = popularityProxy(player.player_name, player.team);
     const roleBoost = roleProxy(player);
     const recentScore = recentPerformanceProxy(player);
     const injuryNewsBoost = injuryNewsRoleBoost(player);
@@ -56,7 +56,9 @@ export function estimateOwnership(players, slateContext = {}) {
     const baseline = slateType === "showdown" ? 4 : 2;
     const multiplier = slateType === "showdown" ? 0.42 : 0.3;
     const sportCap = sport === "nba" && slateType === "showdown" ? 48 : slateType === "showdown" ? 52 : 38;
-    const estimated = baseline + composite * multiplier;
+    const valueTrapPenalty = valueScore >= 75 && projectionScore <= 45 ? 4 : 0;
+    const eliteProjectionBoost = projectionScore >= 88 ? 3.5 : projectionScore >= 78 ? 2 : 0;
+    const estimated = baseline + composite * multiplier - valueTrapPenalty + eliteProjectionBoost;
 
     return Number(clamp(estimated, 1, sportCap).toFixed(2));
   });
@@ -88,10 +90,15 @@ function rankScore(rank, total) {
   return clamp(((total - rank + 1) / total) * 100);
 }
 
-function popularityProxy(name = "") {
+function popularityProxy(name = "", team = "") {
   const cleaned = String(name).toLowerCase();
-  const knownSignal = ["jr", "iii", "patrick", "mahomes", "jokic", "judge", "mcgregor", "scheffler", "larson"];
-  return knownSignal.some((token) => cleaned.includes(token)) ? 70 : 38;
+  const teamToken = String(team).toLowerCase();
+  const suffixSignal = ["jr", "iii", "iv"];
+  const starSignal = ["mahomes", "jokic", "embiid", "judge", "ohtani", "mccaffrey", "scheffler", "mcilroy", "larson"];
+  if (starSignal.some((token) => cleaned.includes(token))) return 74;
+  if (suffixSignal.some((token) => cleaned.includes(token))) return 52;
+  if (["lal", "bos", "dal", "nyy", "kc", "sf"].includes(teamToken)) return 50;
+  return 38;
 }
 
 function roleProxy(player) {
