@@ -83,10 +83,12 @@ return rows.map((r)=>{const environmentScore=clamp(0.35*r.game_total_n+0.35*r.te
 const bustRisk=bustRiskScore>=67?"High":bustRiskScore>=40?"Medium":"Low";
 const lowMinuteRisk = r.minutes > 0 && r.minutes < 8;
 const lowProjectionRisk = r.projection > 0 && r.projection < 4;
-const nonViablePunt = lowMinuteRisk || lowProjectionRisk;
+const starterSignal = r.minutes >= 18 || r.projection_n >= 58 || r.salary_n >= 55;
+const severePunt = (r.minutes > 0 && r.minutes < 6) || (r.projection > 0 && r.projection < 3);
+const nonViablePunt = severePunt || ((lowMinuteRisk || lowProjectionRisk) && !starterSignal);
 const playoffStudSignal = r.salary_n > 68 && r.projection_n > 70;
 const environmentFloor = environmentScore >= 62;
-const fade= nonViablePunt || (bustRiskScore>70 && boomScore<50 && !environmentFloor) || (r.ownership<30?false:boomScore<55 && !playoffStudSignal && !environmentFloor);
+const fade= nonViablePunt || (bustRiskScore>70 && boomScore<50 && !environmentFloor && !starterSignal) || (r.ownership<30?false:boomScore<55 && !playoffStudSignal && !environmentFloor && !starterSignal);
 const role = fade?"Fade": captainScore>78?"Captain": flexScore>74?"Flex": confidence>80?"Core": r.salary_n>70&&r.value_n>60?"Value": leverageScore>72?"Leverage":"Flex";
 const tier = fade?"Tier 5: Fade Candidate": boomScore>82&&captainScore>75?"Tier 1: Slate Breaker": confidence>76&&bustRisk!=="High"?"Tier 2: Strong Core": r.value_n>65?"Tier 3: Value / Salary Saver":"Tier 4: Risky Leverage";
 const contestFit = slateType==="showdown"? (captainScore>flexScore?"Showdown":"3-Max") : contestType;
