@@ -44,6 +44,7 @@ export function runPrivateUpsideEngine(req, res) {
   const scored = scoreRows(eligiblePlayers, { slateType, contestType, maxEntries, lineupsPlaying, pctPaidToFirst });
   const publicResult = scored.map(toPublicResult);
   const adminResult = scored.map((p) => showRawAdminData ? p : toPublicResult(p));
+  const bestCaptain = recommendBestCaptain(scored, slateType);
 
   state.latest = {
     metadata: {
@@ -57,6 +58,7 @@ export function runPrivateUpsideEngine(req, res) {
       pctPaidToFirst: toNullableNumber(pctPaidToFirst),
       generatedAt: new Date().toISOString(),
       csvDiagnostics: diagnostics,
+      bestCaptain,
       excludedPlayers: excludedPlayers.map(({ id, name, team, position, projection, minutes, exclusionReason }) => ({ id, name, team, position, projection, minutes, exclusionReason })),
       excludedPlayerCount: excludedPlayers.length
     },
@@ -244,6 +246,36 @@ const clamp=(n)=>Math.max(1,Math.min(100,n)); const round=(n)=>Math.round(clamp(
 function buildExplanation(role,fit,bust,nonViablePunt=false,environmentScore=50){ if(nonViablePunt) return `Avoid in ${fit}: projection/minutes are too low for realistic upside.`; if(role==="Fade") return `Fade candidate for ${fit} contests because the risk outweighs the upside in this game environment (${environmentScore}/100).`; if(role==="Captain") return `Strong ${fit} leverage play with Captain upside, ${bust.toLowerCase()} bust risk, and supportive game environment (${environmentScore}/100).`; if(role==="Flex") return `Better suited as a Flex play: salary efficiency is stronger than slate-breaking upside, with environment score ${environmentScore}/100.`; return `Solid ${fit} option with a balanced projection, value, risk profile, and game environment (${environmentScore}/100).`; }
 
 function toNullableNumber(v){const n=Number(v); return Number.isFinite(n)?n:null;}
+function recommendBestCaptain(scoredRows, slateType) {
+  const isShowdown = String(slateType || "").toLowerCase() === "showdown";
+  const captainPool = (scoredRows || []).filter((row) => !row.nonViablePunt);
+  if (!captainPool.length) return null;
+
+  const ranked = [...captainPool].sort((a, b) => {
+    if (isShowdown) {
+      if (b.captainScore !== a.captainScore) return b.captainScore - a.captainScore;
+      if (b.boomScore !== a.boomScore) return b.boomScore - a.boomScore;
+      return b.ownershipLeverageScore - a.ownershipLeverageScore;
+    }
+    if (b.projection !== a.projection) return b.projection - a.projection;
+    if (b.ceiling !== a.ceiling) return b.ceiling - a.ceiling;
+    return b.ownershipLeverageScore - a.ownershipLeverageScore;
+  });
+
+  const top = ranked[0];
+  return {
+    playerName: top.name,
+    team: top.team,
+    position: top.position,
+    salary: top.salary,
+    captainScore: top.captainScore,
+    boomScore: top.boomScore,
+    ownershipLeverageScore: top.ownershipLeverageScore,
+    reasoning: isShowdown
+      ? "Top showdown captain score among viable players, with tie-breakers on boom score and leverage."
+      : "Top projected player among viable options, with tie-breakers on ceiling and leverage."
+  };
+}
 function buildContestSettings({ maxEntries, lineupsPlaying, pctPaidToFirst }) {
   const max = Math.max(1, toNullableNumber(maxEntries) || 1);
   const lineups = Math.max(1, toNullableNumber(lineupsPlaying) || 1);
