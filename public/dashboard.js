@@ -1,10 +1,10 @@
-const els = Object.fromEntries(["adminToken","csvFile","date","sport","platform","slateType","contestType","maxEntries","lineupsPlaying","pctPaidToFirst","showRaw","runBtn","search","tierFilter","roleFilter","contestFilter","teamFilter","sort","body","status","insights"].map(id=>[id,document.getElementById(id)]));
+const els = Object.fromEntries(["adminToken","csvFile","date","sport","platform","slateType","contestType","maxEntries","lineupsPlaying","pctPaidToFirst","showRaw","runBtn","search","tierFilter","roleFilter","contestFilter","teamFilter","sort","body","status","insights","lineupCards"].map(id=>[id,document.getElementById(id)]));
 els.date.value=new Date().toISOString().slice(0,10); let players=[];
 const sortState={key:els.sort.value,dir:'desc'};
 
 els.runBtn.onclick=async()=>{const file=els.csvFile.files[0]; if(!file) return setStatus('Upload CSV first',true); const csv=await file.text(); setStatus('Running...');
 const payload={csv,date:els.date.value,sport:els.sport.value.toLowerCase(),platform:els.platform.value.toLowerCase(),slateType:els.slateType.value.toLowerCase(),contestType:els.contestType.value,maxEntries:numOrNull(els.maxEntries.value),lineupsPlaying:numOrNull(els.lineupsPlaying.value),pctPaidToFirst:numOrNull(els.pctPaidToFirst.value),showRawAdminData:els.showRaw.checked};
-const r=await fetch('/admin/upside-engine/run',{method:'POST',headers:{'content-type':'application/json','x-admin-token':els.adminToken.value},body:JSON.stringify(payload)}); const j=await r.json(); if(!r.ok) return setStatus(j.message||'Run failed',true); setStatus(`Engine complete: ${j.publicResult.length} players.`); players=j.publicResult; hydrateFilters(); render(); };
+const r=await fetch('/admin/upside-engine/run',{method:'POST',headers:{'content-type':'application/json','x-admin-token':els.adminToken.value},body:JSON.stringify(payload)}); const j=await r.json(); if(!r.ok) return setStatus(j.message||'Run failed',true); setStatus(`Engine complete: ${j.publicResult.length} players.`); players=j.publicResult; window.lastLineups=j.lineups||[]; hydrateFilters(); render(); };
 ["search","tierFilter","roleFilter","contestFilter","teamFilter","sort"].forEach(k=>els[k].oninput=render);
 document.querySelectorAll('th[data-sort]').forEach(th=>th.onclick=()=>toggleSort(th.dataset.sort));
 
@@ -18,6 +18,7 @@ const s=sortState.key;
 rows.sort((a,b)=>sortByKey(a,b,s,sortState.dir));
 els.body.innerHTML=rows.map(row).join('');
 renderInsights(rows);
+renderLineupCards();
 updateSortIndicators();
 }
 
@@ -32,7 +33,7 @@ function normalizeSortValue(v){if(v==null) return ''; const n=Number(v); return 
 function toggleSort(key){if(sortState.key===key){sortState.dir=sortState.dir==='desc'?'asc':'desc';}else{sortState.key=key; sortState.dir='desc';} render();}
 function updateSortIndicators(){document.querySelectorAll('th[data-sort]').forEach(th=>{th.classList.remove('sorted'); th.textContent=th.textContent.replace(/\s[↑↓]$/,''); if(th.dataset.sort===sortState.key){th.classList.add('sorted'); th.textContent=`${th.textContent.replace(/\s[↑↓]$/,'')} ${sortState.dir==='desc'?'↓':'↑'}`;}});}
 
-function row(p){const fixed=harmonizeExplanation(p); return `<tr class='${(p.bestRole||'').toLowerCase()}'><td class='stickyPlayer'>${p.playerName}</td><td>${p.team||''}</td><td>${p.position||''}</td><td>${p.salary}</td><td><span class='roleBadge role-${(p.bestRole||'').toLowerCase()}'>${p.bestRole||''}</span></td><td>${p.contestFit||''}</td><td>${p.captainTier||p.tier||''}</td><td>${pct(p.confidenceRating)}</td><td>${pct(p.boomScore)}</td><td>${pct(p.bustRisk)}</td><td>${pct(p.ownershipLeverageScore)}</td><td>${pct(p.captainScore)}</td><td>${pct(p.flexScore)}</td><td>${pct(p.eliteScore)}</td><td>${p.topValueTag}</td><td>${fixed}</td></tr>`;}
+function row(p){const fixed=harmonizeExplanation(p); const env=p.environmentTag||p.game_environment_tag||'Neutral Environment'; return `<tr class='${(p.bestRole||'').toLowerCase()}'><td class='stickyPlayer'>${p.playerName}</td><td>${p.team||''}</td><td>${p.position||''}</td><td>${p.salary}</td><td><span class='roleBadge role-${(p.bestRole||'').toLowerCase()}'>${p.bestRole||''}</span></td><td>${p.contestFit||''}</td><td>${p.captainTier||p.captain_tier||p.tier||''}</td><td><span class='envBadge'>${env}</span></td><td>${pct(p.confidenceRating)}</td><td>${pct(p.boomScore)}</td><td>${pct(p.bustRisk)}</td><td>${pct(p.ownershipLeverageScore)}</td><td>${pct(p.captainScore||p.showdown_captain_score)}</td><td>${pct(p.flexScore||p.showdown_flex_score)}</td><td>${pct(p.eliteScore)}</td><td>${p.topValueTag||''}</td><td>${p.premium_explanation||fixed}</td></tr>`;}
 function pct(v){const n=Number(v); return Number.isFinite(n)?`${n}%`:v??'';}
 function eliteScore(p){
   const confidence=numOrZero(p.confidenceRating);
@@ -73,3 +74,5 @@ function setStatus(m,e){els.status.textContent=m; els.status.className=e?'error'
 loadPublic();
 
 function numOrNull(v){const n=Number(v); return Number.isFinite(n)?n:null;}
+
+function renderLineupCards(){ if(!els.lineupCards) return; const cards=(window.lastLineups||[]).slice(0,12); if(!cards.length){els.lineupCards.innerHTML=''; return;} els.lineupCards.innerHTML=cards.map(l=>`<article class='lineupCard'><div><strong>${l.archetype||'Balanced Build'}</strong> <span class='dup ${String(l.duplication_risk||'').toLowerCase()}'>${l.duplication_risk||'Medium'} Dup</span></div><div>${l.archetype_reason||''}</div><div>Salary ${l.salary} | Left ${l.salary_left||0} | ${l.stack_type||''}</div><div class='meters'><span>Ceiling ${pct(l.ceiling_rating)}</span><span>Leverage ${pct(l.leverage_rating)}</span><span>Vol ${pct(l.volatility_rating)}</span></div></article>`).join(''); }
