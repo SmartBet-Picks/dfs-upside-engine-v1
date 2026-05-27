@@ -284,11 +284,27 @@ const rankedCeilingRows = [...rows]
   .sort((a,b)=>b.ceiling-a.ceiling);
 const topCeilingThreshold = rankedCeilingRows[2]?.ceiling ?? Number.POSITIVE_INFINITY;
 const top5CeilingThreshold = rankedCeilingRows[4]?.ceiling ?? Number.POSITIVE_INFINITY;
-return rows.map((r)=>{const environmentScore=clamp(0.35*r.game_total_n+0.35*r.team_total_n+0.2*r.pace_n+0.1*r.spread_n);const confidence=clamp(0.33*r.projection_n+0.2*r.minutes_n+0.2*r.value_n+0.15*r.floor_n+0.12*environmentScore);const boomScore=clamp(0.3*r.ceiling_n+0.22*r.boom_n+0.18*r.projection_n+0.12*r.salary_n+0.1*environmentScore+0.08*r.usage_n);const bustRiskScore=clamp(0.26*(100-r.floor_n)+0.21*(100-r.value_n)+0.2*(100-r.minutes_n)+0.15*(100-r.salary_n)+0.1*(100-r.ownership_n)+0.08*(100-r.volatility_n));const leverageScore=clamp((0.42*boomScore+0.42*r.ownership_n+0.08*environmentScore+0.08*r.usage_n)*settings.leverageBoost);
+const top8Projection = new Set([...rows]
+  .map((r,idx)=>({idx,val:r.projection||0}))
+  .sort((a,b)=>b.val-a.val)
+  .slice(0,8)
+  .map(({idx})=>idx));
+const top8Ceiling = new Set([...rows]
+  .map((r,idx)=>({idx,val:r.ceiling||0}))
+  .sort((a,b)=>b.val-a.val)
+  .slice(0,8)
+  .map(({idx})=>idx));
+const top8Boom = new Set([...rows]
+  .map((r,idx)=>({idx,val:r.boom||0}))
+  .sort((a,b)=>b.val-a.val)
+  .slice(0,8)
+  .map(({idx})=>idx));
+return rows.map((r,idx)=>{const environmentScore=clamp(0.35*r.game_total_n+0.35*r.team_total_n+0.2*r.pace_n+0.1*r.spread_n);const confidence=clamp(0.33*r.projection_n+0.2*r.minutes_n+0.2*r.value_n+0.15*r.floor_n+0.12*environmentScore);const boomScore=clamp(0.3*r.ceiling_n+0.22*r.boom_n+0.18*r.projection_n+0.12*r.salary_n+0.1*environmentScore+0.08*r.usage_n);const bustRiskScore=clamp(0.26*(100-r.floor_n)+0.21*(100-r.value_n)+0.2*(100-r.minutes_n)+0.15*(100-r.salary_n)+0.1*(100-r.ownership_n)+0.08*(100-r.volatility_n));const upsideScore=clamp(0.46*r.ceiling_n+0.28*boomScore+0.16*r.projection_n+0.1*environmentScore);const ownershipDiscount=clamp(100-r.ownership_n);
+let leverageScore=clamp(upsideScore*(ownershipDiscount/100)*settings.leverageBoost);
+if(upsideScore<50) leverageScore=Math.min(leverageScore,35);
 const inferredStarter = r.isStarter || r.minutes >= 26 || (r.salary_n >= 62 && r.projection_n >= 60);
 const salaryAdjustedUpside = clamp((0.7*r.ceiling_n)+(0.3*r.salary_n));
-const ownershipDiscount = 100 - r.ownership_n;
-let captainScore=clamp(0.45*r.ceiling_n+0.13*r.projection_n+0.20*leverageScore+0.08*salaryAdjustedUpside+0.11*boomScore+0.03*environmentScore+0.02*ownershipDiscount+settings.captainBoost);
+let captainScore=clamp(0.48*r.ceiling_n+0.14*r.projection_n+0.18*leverageScore+0.08*salaryAdjustedUpside+0.1*boomScore+0.02*environmentScore+settings.captainBoost);
 const topCeilingPlayer = r.ceiling >= topCeilingThreshold && r.ceiling > 0;
 const top5CeilingPlayer = r.ceiling >= top5CeilingThreshold && r.ceiling > 0;
 const strongLevCeil = leverageScore >= 65 && r.ceiling_n >= 70;
@@ -306,6 +322,12 @@ if (cheapSaverOnly && !top5CeilingPlayer) captainScore -= 5;
 if (weakCeilingBust && !top5CeilingPlayer) captainScore -= 6;
 if (topCeilingPlayer && !catastrophicProfile) captainScore = Math.max(captainScore, 60);
 if (top5CeilingPlayer && !catastrophicProfile) captainScore = Math.max(captainScore, 52);
+const top8CaptainSignal = top8Projection.has(idx) || top8Ceiling.has(idx) || top8Boom.has(idx);
+const strongRoleSignal = inferredStarter || r.minutes >= 28 || (r.projection_n >= 62 && r.minutes_n >= 58);
+const hasTrueCeilingPath = top8CaptainSignal || strongRoleSignal;
+const valueOnlyCaptain = r.value_n >= 74 && r.ceiling_n < 62 && !top8CaptainSignal;
+if (!hasTrueCeilingPath) captainScore = Math.min(captainScore, 51);
+if (valueOnlyCaptain) captainScore = Math.min(captainScore, 51);
 captainScore=clamp(captainScore);
 const flexScore=clamp(0.34*r.value_n+0.28*r.projection_n+0.24*(100-bustRiskScore)+0.1*r.salary_n+0.04*r.minutes_n-settings.flexPenalty);
 const bustRisk=bustRiskScore>=67?"High":bustRiskScore>=40?"Medium":"Low";
@@ -322,11 +344,11 @@ const role = fade?"Fade": captainScore>=60?"Captain": flexScore>74?"Flex": confi
 const tier = captainTier;
 const contestFit = slateType==="showdown"? (captainScore>flexScore?"Showdown":"3-Max") : contestType;
 const captainBonus = (topCeilingPlayer ? 15 : top5CeilingPlayer ? 8 : 0) + (strongLevCeil ? 8 : 0) + (uniqueBuild ? 5 : 0) - ((lowUpsidePath && !top5CeilingPlayer) ? 8 : 0) - ((cheapSaverOnly && !top5CeilingPlayer) ? 5 : 0) - ((weakCeilingBust && !top5CeilingPlayer) ? 6 : 0);
-return {...r, confidenceRating:round(confidence), contestAggression: settings.aggression, environmentScore: round(environmentScore), boomScore:round(boomScore), bustRisk, ownershipLeverageScore:round(leverageScore), captainScore:round(captainScore), captainTier, flexScore:round(flexScore), topValueTag:r.value_n>75?"Yes":"No", bestRole:role, tier, contestFit, nonViablePunt, captainBonus: round(captainBonus), explanation:buildExplanation({ captainTier, captainScore: round(captainScore), ceilingScore: round(r.ceiling_n), leverageScore: round(leverageScore), lowUpsidePath, cheapSaverOnly, weakCeilingBust })};});}
+return {...r, confidenceRating:round(confidence), contestAggression: settings.aggression, environmentScore: round(environmentScore), boomScore:round(boomScore), bustRisk, ownershipLeverageScore:round(leverageScore), captainScore:round(captainScore), captainTier, flexScore:round(flexScore), topValueTag:r.value_n>75?"Yes":"No", bestRole:role, tier, contestFit, nonViablePunt, captainBonus: round(captainBonus), explanation:buildExplanation({ captainTier, captainScore: round(captainScore), ceilingScore: round(r.ceiling_n), leverageScore: round(leverageScore), lowUpsidePath, cheapSaverOnly, weakCeilingBust, top8CaptainSignal, strongRoleSignal, valueOnlyCaptain, upsideScore: round(upsideScore) })};});}
 function toPublicResult(r){return { playerName:r.name, team:r.team, position:r.position, salary:r.salary, bestRole:r.bestRole, contestFit:r.contestFit, tier:r.tier, captainTier:r.captainTier, confidenceRating:r.confidenceRating, environmentScore:r.environmentScore, boomScore:r.boomScore, bustRisk:r.bustRisk, ownershipLeverageScore:r.ownershipLeverageScore, captainScore:r.captainScore, flexScore:r.flexScore, topValueTag:r.topValueTag, explanation:r.explanation };}
 const clamp=(n)=>Math.max(1,Math.min(100,n)); const round=(n)=>Math.round(clamp(n));
-function buildExplanation({ captainTier, captainScore, ceilingScore, leverageScore, lowUpsidePath, cheapSaverOnly, weakCeilingBust }){ if(captainTier==="Elite Captain") return "Elite Captain candidate because he carries one of the strongest ceiling profiles on the slate with enough raw upside to separate from the field."; if(captainTier==="Strong Captain") return "Strong tournament Captain because the ceiling and leverage combination is better than a Flex-only salary value path."; if(captainTier==="Viable Captain") return `Viable Captain choice with playable upside (${captainScore}) but less separation than the top ceiling options.`; if(cheapSaverOnly) return "Better as Flex than Captain because the salary relief helps builds, but the player lacks true slate-breaking upside."; if(lowUpsidePath||weakCeilingBust) return "Avoid at Captain because the projection/minutes profile is too thin to win the multiplier spot."; return `Thin Captain option: the current ceiling (${ceilingScore}) and leverage (${leverageScore}) profile is not strong enough for reliable showdown Captain exposure.`; }
-function getCaptainTier(captainScore){if(captainScore>=75) return "Elite Captain"; if(captainScore>=60) return "Strong Captain"; if(captainScore>=45) return "Viable Captain"; if(captainScore>=30) return "Thin Captain"; return "Avoid Captain";}
+function buildExplanation({ captainTier, captainScore, ceilingScore, leverageScore, lowUpsidePath, cheapSaverOnly, weakCeilingBust, top8CaptainSignal, strongRoleSignal, valueOnlyCaptain, upsideScore }){ if(captainTier==="Elite Captain") return "Elite ceiling captain: top-tier raw upside with enough role security to justify heavy multiplier exposure."; if(captainTier==="Strong Captain" && leverageScore>=62) return "Leverage captain with real upside: low ownership is supported by true boom/ceiling pathways."; if(captainTier==="Strong Captain") return "Strong captain profile: high-end ceiling and stable role make this more than a flex-only build."; if(captainTier==="Viable Captain" && top8CaptainSignal) return `Viable captain via true-ceiling path (top-8 signal) with playable upside (${upsideScore}).`; if(captainTier==="Viable Captain" && strongRoleSignal) return "Viable captain from strong minutes/role floor, but below elite raw ceiling outcomes."; if(valueOnlyCaptain||cheapSaverOnly) return "Salary saver profile: useful for flex construction, but capped at thin captain without top-tier ceiling."; if(lowUpsidePath||weakCeilingBust) return "Avoid captain: minutes/projection/ceiling risk is too fragile for a winning multiplier build."; return `Thin captain only: modest ceiling (${ceilingScore}) and leverage (${leverageScore}) keep this as a secondary exposure.`; }
+function getCaptainTier(captainScore){if(captainScore>=75) return "Elite Captain"; if(captainScore>=65) return "Strong Captain"; if(captainScore>=52) return "Viable Captain"; if(captainScore>=35) return "Thin Captain"; return "Avoid Captain";}
 
 function toNullableNumber(v){const n=Number(v); return Number.isFinite(n)?n:null;}
 function recommendBestCaptain(scoredRows, slateType) {
