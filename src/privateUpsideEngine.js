@@ -284,6 +284,16 @@ const rankedCeilingRows = [...rows]
   .sort((a,b)=>b.ceiling-a.ceiling);
 const topCeilingThreshold = rankedCeilingRows[2]?.ceiling ?? Number.POSITIVE_INFINITY;
 const top5CeilingThreshold = rankedCeilingRows[4]?.ceiling ?? Number.POSITIVE_INFINITY;
+const top2Projection = new Set([...rows]
+  .map((r,idx)=>({idx,val:r.projection||0}))
+  .sort((a,b)=>b.val-a.val)
+  .slice(0,2)
+  .map(({idx})=>idx));
+const top2Ceiling = new Set([...rows]
+  .map((r,idx)=>({idx,val:r.ceiling||0}))
+  .sort((a,b)=>b.val-a.val)
+  .slice(0,2)
+  .map(({idx})=>idx));
 const top8Projection = new Set([...rows]
   .map((r,idx)=>({idx,val:r.projection||0}))
   .sort((a,b)=>b.val-a.val)
@@ -339,7 +349,8 @@ const nonViablePunt = severePunt || ((lowMinuteRisk || lowProjectionRisk) && !st
 const playoffStudSignal = r.salary_n > 68 && r.projection_n > 70;
 const environmentFloor = environmentScore >= 62;
 const fade= nonViablePunt || (bustRiskScore>70 && boomScore<50 && !environmentFloor && !starterSignal) || (r.ownership<30?false:boomScore<55 && !playoffStudSignal && !environmentFloor && !starterSignal);
-const captainTier = getCaptainTier(captainScore);
+const top2RawSignal = top2Projection.has(idx) || top2Ceiling.has(idx);
+const captainTier = getCaptainTier(captainScore, top2RawSignal);
 const role = fade?"Fade": captainScore>=60?"Captain": flexScore>74?"Flex": confidence>80?"Core": r.salary_n>70&&r.value_n>60?"Value": leverageScore>72?"Leverage":"Flex";
 const tier = captainTier;
 const contestFit = slateType==="showdown"? (captainScore>flexScore?"Showdown":"3-Max") : contestType;
@@ -348,7 +359,7 @@ return {...r, confidenceRating:round(confidence), contestAggression: settings.ag
 function toPublicResult(r){return { playerName:r.name, team:r.team, position:r.position, salary:r.salary, bestRole:r.bestRole, contestFit:r.contestFit, tier:r.tier, captainTier:r.captainTier, confidenceRating:r.confidenceRating, environmentScore:r.environmentScore, boomScore:r.boomScore, bustRisk:r.bustRisk, ownershipLeverageScore:r.ownershipLeverageScore, captainScore:r.captainScore, flexScore:r.flexScore, topValueTag:r.topValueTag, explanation:r.explanation };}
 const clamp=(n)=>Math.max(1,Math.min(100,n)); const round=(n)=>Math.round(clamp(n));
 function buildExplanation({ captainTier, captainScore, ceilingScore, leverageScore, lowUpsidePath, cheapSaverOnly, weakCeilingBust, top8CaptainSignal, strongRoleSignal, valueOnlyCaptain, upsideScore }){ if(captainTier==="Elite Captain") return "Elite ceiling captain: top-tier raw upside with enough role security to justify heavy multiplier exposure."; if(captainTier==="Strong Captain" && leverageScore>=62) return "Leverage captain with real upside: low ownership is supported by true boom/ceiling pathways."; if(captainTier==="Strong Captain") return "Strong captain profile: high-end ceiling and stable role make this more than a flex-only build."; if(captainTier==="Viable Captain" && top8CaptainSignal) return `Viable captain via true-ceiling path (top-8 signal) with playable upside (${upsideScore}).`; if(captainTier==="Viable Captain" && strongRoleSignal) return "Viable captain from strong minutes/role floor, but below elite raw ceiling outcomes."; if(valueOnlyCaptain||cheapSaverOnly) return "Salary saver profile: useful for flex construction, but capped at thin captain without top-tier ceiling."; if(lowUpsidePath||weakCeilingBust) return "Avoid captain: minutes/projection/ceiling risk is too fragile for a winning multiplier build."; return `Thin captain only: modest ceiling (${ceilingScore}) and leverage (${leverageScore}) keep this as a secondary exposure.`; }
-function getCaptainTier(captainScore){if(captainScore>=75) return "Elite Captain"; if(captainScore>=65) return "Strong Captain"; if(captainScore>=52) return "Viable Captain"; if(captainScore>=35) return "Thin Captain"; return "Avoid Captain";}
+function getCaptainTier(captainScore, top2RawSignal=false){if(captainScore>=75) return "Elite Captain"; if(captainScore>=58 || (top2RawSignal && captainScore>=58)) return "Strong Captain"; if(captainScore>=48) return "Viable Captain"; if(captainScore>=35) return "Thin Captain"; return "Avoid Captain";}
 
 function toNullableNumber(v){const n=Number(v); return Number.isFinite(n)?n:null;}
 function recommendBestCaptain(scoredRows, slateType) {
