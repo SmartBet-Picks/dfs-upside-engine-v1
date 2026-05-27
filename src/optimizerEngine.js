@@ -27,7 +27,7 @@ export function optimizeLineups(players, options = {}) {
     ? optimizeShowdown(candidates, { lineupCount, salaryCap, objective, minUniquePlayers, minProjectedMinutes })
     : optimizeClassic(candidates, { sport, lineupCount, salaryCap, objective, minUniquePlayers, minProjectedMinutes });
 
-  return attachSimulations(lineups, simCount);
+  return attachSimulations(lineups, simCount).map((lineup) => enrichLineupAnalytics(lineup, salaryCap));
 }
 
 export function buildEntryPortfolio(lineups = [], options = {}) {
@@ -65,7 +65,16 @@ export function lineupsToCsv(lineups = []) {
     "sim_avg",
     "sim_p90",
     "sim_top_rate",
-    "players"
+    "players",
+    "archetype",
+    "duplication_risk",
+    "ceiling_rating",
+    "leverage_rating",
+    "stability_rating",
+    "volatility_rating",
+    "correlation_rating",
+    "salary_left",
+    "stack_type"
   ];
 
   const rows = lineups.map((lineup, index) => ({
@@ -83,7 +92,16 @@ export function lineupsToCsv(lineups = []) {
     sim_avg: lineup.simulation?.average || "",
     sim_p90: lineup.simulation?.p90 || "",
     sim_top_rate: lineup.simulation?.top_rate || "",
-    players: lineup.players.map((player) => `${player.slot}:${player.player_name}`).join(" | ")
+    players: lineup.players.map((player) => `${player.slot}:${player.player_name}`).join(" | "),
+    archetype: lineup.archetype,
+    duplication_risk: lineup.duplication_risk,
+    ceiling_rating: lineup.ceiling_rating,
+    leverage_rating: lineup.leverage_rating,
+    stability_rating: lineup.stability_rating,
+    volatility_rating: lineup.volatility_rating,
+    correlation_rating: lineup.correlation_rating,
+    salary_left: lineup.salary_left,
+    stack_type: lineup.stack_type
   }));
 
   return [
@@ -503,4 +521,38 @@ function csvEscape(value) {
   const text = String(value ?? "");
   if (!/[",\n]/.test(text)) return text;
   return `"${text.replaceAll('"', '""')}"`;
+}
+
+
+function enrichLineupAnalytics(lineup, salaryCap = 50000) {
+  const p = lineup.players || [];
+  const captain = p.find((x) => x.slot === "CPT");
+  const avgOwn = avg(p, "ownership");
+  const avgLev = avg(p, "leverage_score");
+  const avgUpside = avg(p, "upside_score");
+  const avgVol = avg(p.map((x) => ({ volatility: Math.max(0, safeNum(x.ceiling) - safeNum(x.floor)) })), "volatility");
+  const salaryLeft = Math.max(0, round(salaryCap - safeNum(lineup.salary)));
+  const teamCounts = p.reduce((acc, pl) => { const team = String(pl.team || "UNK"); acc[team] = (acc[team] || 0) + 1; return acc; }, {});
+  const maxTeam = Math.max(...Object.values(teamCounts), 0);
+  const stackType = maxTeam >= 5 ? "5-1 Stack" : maxTeam === 4 ? "4-2 Stack" : "Balanced";
+  const spendUps = p.filter((x) => safeNum(x.salary) >= 9800).length + (captain && safeNum(captain.salary) >= 12000 ? 1 : 0);
+  const punts = p.filter((x) => safeNum(x.salary) <= 3800).length;
+
+  let archetype = "Balanced Build";
+  let reason = "Balanced tournament build prioritizing six playable ceilings over hyper-volatile salary punts.";
+  if (spendUps >= 2 && punts >= 2) { archetype = "Stars & Scrubs"; reason = "Stars & Scrubs build focused on raw ceiling from elite spend-ups while sacrificing stability for first-place upside."; }
+  else if (spendUps >= 2) { archetype = "Double Spend-Up"; reason = "Double Spend-Up construction centered on two premium raw-ceiling anchors."; }
+  else if (avgLev >= 68 && avgOwn <= 22) { archetype = "Leverage Stack"; reason = "Leverage Stack built around ownership discounts with tournament-relevant upside."; }
+  else if (maxTeam >= 5) { archetype = "Onslaught Build"; reason = "Onslaught construction leaning into concentrated game script outcomes."; }
+  else if (avgOwn <= 18) { archetype = "Ownership Fade Build"; reason = "Ownership fade build designed to reduce duplication and gain uniqueness across combinations."; }
+  else if (avgUpside >= 72) { archetype = "Ceiling Build"; reason = "Ceiling-focused lineup emphasizing top-end outcomes over median stability."; }
+
+  const duplication = clamp(avgOwn * 1.7 + (captain && safeNum(captain.ownership) >= 20 ? 14 : 0) + (salaryLeft <= 200 ? 12 : salaryLeft >= 800 ? -10 : 0) + (archetype === "Stars & Scrubs" ? 10 : 0));
+  const leverageRating = clamp(avgLev * 0.7 + (100 - avgOwn) * 0.3);
+  const ceilingRating = clamp(avgUpside * 0.5 + safeNum(lineup.ceiling) / Math.max(1, safeNum(lineup.projection)) * 25 + (captain ? safeNum(captain.upside_score) * 0.2 : 0));
+  const stabilityRating = clamp(100 - avgVol * 0.35);
+  const volatilityRating = clamp(100 - stabilityRating + (archetype === "Stars & Scrubs" ? 8 : 0));
+  const correlationRating = clamp(52 + maxTeam * 8 + (stackType === "5-1 Stack" ? 8 : stackType === "4-2 Stack" ? 5 : 0));
+
+  return { ...lineup, salary_left: salaryLeft, archetype, archetype_reason: reason, stack_type: stackType, game_script: maxTeam >= 4 ? "Onslaught/Concentrated" : "Balanced/Spread", duplication_risk: duplication >= 70 ? "High" : duplication >= 45 ? "Medium" : "Low", duplication_score: round(duplication), leverage_rating: round(leverageRating), ceiling_rating: round(ceilingRating), stability_rating: round(stabilityRating), volatility_rating: round(volatilityRating), correlation_rating: round(correlationRating) };
 }
