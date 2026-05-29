@@ -1,6 +1,7 @@
 const els = Object.fromEntries(["adminToken","csvFile","date","sport","platform","slateType","contestType","maxEntries","lineupsPlaying","pctPaidToFirst","showRaw","runBtn","search","tierFilter","roleFilter","contestFilter","teamFilter","sort","body","status","insights","lineupCards"].map(id=>[id,document.getElementById(id)]));
 els.date.value=new Date().toISOString().slice(0,10); let players=[];
 const sortState={key:els.sort.value,dir:'desc'};
+els.slateType.onchange=()=>{sortState.key=els.slateType.value.toLowerCase()==='classic'?'classicScore':'captainScore'; els.sort.value=sortState.key; render();};
 
 els.runBtn.onclick=async()=>{const file=els.csvFile.files[0]; if(!file) return setStatus('Upload CSV first',true); const csv=await file.text(); setStatus('Running...');
 const payload={csv,date:els.date.value,sport:els.sport.value.toLowerCase(),platform:els.platform.value.toLowerCase(),slateType:els.slateType.value.toLowerCase(),contestType:els.contestType.value,maxEntries:numOrNull(els.maxEntries.value),lineupsPlaying:numOrNull(els.lineupsPlaying.value),pctPaidToFirst:numOrNull(els.pctPaidToFirst.value),showRawAdminData:els.showRaw.checked};
@@ -33,7 +34,7 @@ function normalizeSortValue(v){if(v==null) return ''; const n=Number(v); return 
 function toggleSort(key){if(sortState.key===key){sortState.dir=sortState.dir==='desc'?'asc':'desc';}else{sortState.key=key; sortState.dir='desc';} render();}
 function updateSortIndicators(){document.querySelectorAll('th[data-sort]').forEach(th=>{th.classList.remove('sorted'); th.textContent=th.textContent.replace(/\s[↑↓]$/,''); if(th.dataset.sort===sortState.key){th.classList.add('sorted'); th.textContent=`${th.textContent.replace(/\s[↑↓]$/,'')} ${sortState.dir==='desc'?'↓':'↑'}`;}});}
 
-function row(p){const fixed=harmonizeExplanation(p); const env=p.environmentTag||p.game_environment_tag||'Neutral Environment'; return `<tr class='${(p.bestRole||'').toLowerCase()}'><td class='stickyPlayer'>${p.playerName}</td><td>${p.team||''}</td><td>${p.position||''}</td><td>${p.salary}</td><td><span class='roleBadge role-${(p.bestRole||'').toLowerCase()}'>${p.bestRole||''}</span></td><td>${p.contestFit||''}</td><td>${p.captainTier||p.captain_tier||p.tier||''}</td><td><span class='envBadge'>${env}</span></td><td>${pct(p.confidenceRating)}</td><td>${pct(p.boomScore)}</td><td>${pct(p.bustRisk)}</td><td>${pct(p.ownershipLeverageScore)}</td><td>${pct(p.captainScore||p.showdown_captain_score)}</td><td>${pct(p.flexScore||p.showdown_flex_score)}</td><td>${pct(p.eliteScore)}</td><td>${p.topValueTag||''}</td><td>${p.premium_explanation||fixed}</td></tr>`;}
+function row(p){const fixed=harmonizeExplanation(p); const env=p.environmentTag||p.game_environment_tag||'Neutral Environment'; return `<tr class='${(p.bestRole||'').toLowerCase()}'><td class='stickyPlayer'>${p.playerName}</td><td>${p.slateFormat||''}</td><td>${p.team||''}</td><td>${p.position||''}</td><td>${p.salary}</td><td><span class='roleBadge role-${(p.bestRole||'').toLowerCase()}'>${p.bestRole||''}</span></td><td>${p.contestFit||''}</td><td>${p.captainTier||p.captain_tier||p.tier||''}</td><td><span class='envBadge'>${env}</span></td><td>${pct(p.confidenceRating)}</td><td>${pct(p.boomScore)}</td><td>${pct(p.bustRisk)}</td><td>${pct(p.ownershipLeverageScore)}</td><td>${pct(p.classicScore)}</td><td>${pct(p.captainScore||p.showdown_captain_score)}</td><td>${pct(p.flexScore||p.showdown_flex_score)}</td><td>${pct(p.eliteScore)}</td><td>${p.topValueTag||''}</td><td>${p.premium_explanation||fixed}</td></tr>`;}
 function pct(v){const n=Number(v); return Number.isFinite(n)?`${n}%`:v??'';}
 function eliteScore(p){
   const confidence=numOrZero(p.confidenceRating);
@@ -41,8 +42,9 @@ function eliteScore(p){
   const leverage=numOrZero(p.ownershipLeverageScore);
   const captain=numOrZero(p.captainScore);
   const flex=numOrZero(p.flexScore);
+  const classic=numOrZero(p.classicScore);
   const bust=numOrZero(p.bustRisk);
-  const raw=(confidence*.26)+(boom*.28)+(leverage*.2)+(captain*.14)+(flex*.12)-(bust*.25);
+  const raw=(confidence*.22)+(boom*.24)+(leverage*.18)+(classic*.16)+(captain*.1)+(flex*.1)-(bust*.25);
   return Math.max(0,Math.min(100,Math.round(raw)));
 }
 function numOrZero(v){const n=Number(v); return Number.isFinite(n)?n:0;}
