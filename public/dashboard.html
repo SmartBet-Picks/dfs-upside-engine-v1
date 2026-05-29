@@ -37,6 +37,7 @@
       <select id='contestFilter' aria-label='Contest filter'><option value=''>Contest: All</option></select>
       <select id='teamFilter' aria-label='Team filter'><option value=''>Team: All</option></select>
       <select id='sort' aria-label='Sort by'>
+        <option value='classicScore'>Sort: Classic</option>
         <option value='confidenceRating'>Sort: Confidence</option>
         <option value='boomScore'>Sort: Boom Score</option>
         <option value='ownershipLeverageScore'>Sort: Leverage</option>
@@ -47,7 +48,7 @@
       </select>
     </div>
     <div id='status'></div>
-    <div class='tableWrap'><table><thead><tr><th data-sort='playerName'>Player</th><th>Team</th><th>Pos</th><th data-sort='salary'>Salary</th><th>Role</th><th>Contest Fit</th><th>Captain Tier</th><th>Environment</th><th data-sort='confidenceRating'>Conf</th><th data-sort='boomScore'>Boom</th><th data-sort='bustRisk'>Bust</th><th data-sort='ownershipLeverageScore'>Lev</th><th data-sort='captainScore'>Cap</th><th data-sort='flexScore'>Flex</th><th data-sort='eliteScore'>Elite</th><th>Value</th><th>Explanation</th></tr></thead><tbody id='body'></tbody></table></div><h2>Lineup Archetypes</h2><div id='lineupCards' class='lineupCards'></div>
+    <div class='tableWrap'><table><thead><tr><th data-sort='playerName'>Player</th><th>Slate</th><th>Team</th><th>Pos</th><th data-sort='salary'>Salary</th><th>Role</th><th>Contest Fit</th><th>Captain Tier</th><th>Environment</th><th data-sort='confidenceRating'>Conf</th><th data-sort='boomScore'>Boom</th><th data-sort='bustRisk'>Bust</th><th data-sort='ownershipLeverageScore'>Lev</th><th data-sort='classicScore'>Classic</th><th data-sort='captainScore'>Cap</th><th data-sort='flexScore'>Flex</th><th data-sort='eliteScore'>Elite</th><th>Value</th><th>Explanation</th></tr></thead><tbody id='body'></tbody></table></div><h2>Lineup Archetypes</h2><div id='lineupCards' class='lineupCards'></div>
   </section>
 </main>
 <script src='/public/dashboard.js'></script>

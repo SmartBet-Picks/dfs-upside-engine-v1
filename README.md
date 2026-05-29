@@ -28,6 +28,12 @@
 }
 ```
 
+
+## Classic vs. Showdown slates
+- Set `slateType` to `classic` for standard six-fighter MMA builds; the admin engine returns classic tiers, classic scores, and six-slot `F1`-`F6` lineups.
+- Set `slateType` to `showdown` for CPT/FLEX multiplier builds; the engine returns captain/flex scores and showdown lineups.
+- DraftKings MMA classic CSVs with `Name + ID`, `Position`/`Roster Position`, `Salary`, and `AvgPointsPerGame` are accepted.
+
 ## Privacy Model
 - Raw CSV input stays server-side in private scoring flow.
 - Public API excludes raw projection, ceiling, floor, ownership, boom, and bust source numbers.
