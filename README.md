@@ -26,10 +26,36 @@
   "platform": "draftkings",
   "slateType": "classic",
   "contestType": "Single Entry",
+  "maxEntries": 150,
+  "lineupsPlaying": 12,
+  "pctPaidToFirst": 22.5,
+  "contestProfile": {
+    "contestName": "DK NBA $15 Large Field GPP",
+    "contestId": "optional-contest-id",
+    "entryFee": 15,
+    "fieldSize": 20000,
+    "maxEntries": 150,
+    "yourEntries": 20,
+    "prizePool": 300000,
+    "firstPlacePrize": 75000,
+    "paidSpots": 4000,
+    "percentFieldPaid": 20,
+    "contestType": "Large Field GPP",
+    "lateSwapEnabled": true,
+    "slateName": "Main Slate",
+    "duplicationRiskTarget": "High"
+  },
   "showRawAdminData": false
 }
 ```
 
+
+
+## Exact contest profile
+- The admin dashboard includes a **Contest Profile / Exact Contest Settings** panel for manual DraftKings/FanDuel contest details.
+- Exact contest fields tune the new `exactContestScore`, contest-aware recommendations, numeric `bustRiskScore`, and lineup archetypes.
+- The public player output keeps the readable `bustRisk` label and also exposes `bustRiskLabel` plus numeric `bustRiskScore` for sorting/scoring.
+- Response metadata now includes `contestProfile` and a `recommendations` object with exact-contest, raw projection, ceiling, leverage, single-entry, cash, large-field GPP, captain/flex, and fade signals.
 
 ## Classic vs. Showdown slates
 - Set `slateType` to `classic` for standard six-fighter MMA builds; the admin engine returns classic tiers, classic scores, and six-slot `F1`-`F6` lineups.
