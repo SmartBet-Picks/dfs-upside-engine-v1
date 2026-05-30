@@ -37,7 +37,16 @@ export function requireAdmin(req, res, next) {
 export function runPrivateUpsideEngine(req, res) {
   const { csv, entryCsv, entryFileName, date, sport, platform, slateType, contestType, maxEntries, lineupsPlaying, pctPaidToFirst, contestProfile: rawContestProfile, showRawAdminData = false } = req.body || {};
   if (!csv || !date || !sport || !platform || !slateType || !contestType) return res.status(400).json({ error: true, message: "Missing required fields." });
-  const { rows, diagnostics } = parseCsv(csv);
+
+  let parsedCsv;
+  try {
+    parsedCsv = parseCsv(csv);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Unable to parse projection CSV.";
+    return res.status(400).json({ error: true, message });
+  }
+
+  const { rows, diagnostics } = parsedCsv;
   if (!rows.length) return res.status(400).json({ error: true, message: "CSV contains no data rows." });
   const entryDiagnostics = entryCsv ? parseContestEntryCsv(entryCsv, entryFileName) : null;
   const normalizedSlateType = normalizeSlateType(slateType);
