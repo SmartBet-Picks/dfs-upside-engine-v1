@@ -18,7 +18,7 @@ let autoScanRunning = false;
 const lineupExports = new Map();
 
 app.use(cors());
-app.use(express.json({ limit: "1mb" }));
+app.use(express.json({ limit: process.env.JSON_BODY_LIMIT || "25mb" }));
 app.use("/public", express.static("public"));
 
 app.get("/", (req, res) => {
@@ -261,6 +261,13 @@ app.delete("/clear-slate", asyncHandler(async (req, res) => {
 
 app.use((err, req, res, next) => {
   console.error(`[error] ${req.method} ${req.path}`, err);
+  const isPayloadTooLarge = err.type === "entity.too.large" || err.status === 413;
+  if (isPayloadTooLarge || (err instanceof SyntaxError && err.status === 400 && "body" in err)) {
+    const message = isPayloadTooLarge
+      ? "Uploaded CSV payload is too large. Try a smaller export or increase JSON_BODY_LIMIT."
+      : "Request body could not be parsed. Please verify the uploaded CSV/request format.";
+    return res.status(isPayloadTooLarge ? 413 : 400).json({ error: true, message, path: req.path });
+  }
   if (err instanceof LegalDataSourceError) {
     return res.status(502).json({
       error: true,

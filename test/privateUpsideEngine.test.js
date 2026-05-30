@@ -46,3 +46,21 @@ Golf,H,FLEX,5000,18,32,8,8,8,35,3.6,22,195,96,9,90,15,30`;
   assert.equal(target.captainScore, 58);
   assert.equal(target.bestRole, "Captain");
 });
+
+test("private engine returns a JSON error for missing required CSV columns", () => {
+  const csv = `player,team,position,ceiling
+No Salary,A,PG,40`;
+
+  const { payload, statusCode } = runPrivateEngine({
+    csv,
+    date: "2026-05-30",
+    sport: "nba",
+    platform: "draftkings",
+    slateType: "classic",
+    contestType: "gpp"
+  });
+
+  assert.equal(statusCode, 400);
+  assert.equal(payload.error, true);
+  assert.match(payload.message, /Missing required CSV columns: salary, projection/);
+});

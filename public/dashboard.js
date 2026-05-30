@@ -3,9 +3,16 @@ els.date.value=new Date().toISOString().slice(0,10); let players=[];
 const sortState={key:els.sort.value,dir:'desc'};
 els.slateType.onchange=()=>{sortState.key=els.slateType.value.toLowerCase()==='classic'?'classicScore':'captainScore'; els.sort.value=sortState.key; render();};
 
-els.runBtn.onclick=async()=>{const file=els.csvFile.files[0]; if(!file) return setStatus('Upload projection CSV first',true); const csv=await file.text(); setStatus('Running with projection CSV...');
-const contestProfile=buildContestProfile(); const payload={csv,date:els.date.value,sport:els.sport.value.toLowerCase(),platform:els.platform.value.toLowerCase(),slateType:els.slateType.value.toLowerCase(),contestType:els.contestType.value,maxEntries:numOrNull(els.maxEntries.value),lineupsPlaying:numOrNull(els.lineupsPlaying.value),pctPaidToFirst:numOrNull(els.pctPaidToFirst.value),contestProfile,showRawAdminData:els.showRaw.checked};
-const r=await fetch('/admin/upside-engine/run',{method:'POST',headers:{'content-type':'application/json','x-admin-token':els.adminToken.value},body:JSON.stringify(payload)}); const j=await r.json(); if(!r.ok) return setStatus(j.message||'Run failed',true); setStatus(`Engine complete: ${j.publicResult.length} players.`); players=j.publicResult; window.lastLineups=j.lineups||[]; hydrateFilters(); render(); };
+els.runBtn.onclick=async()=>{const file=els.csvFile.files[0]; if(!file) return setStatus('Upload projection CSV first',true); const csv=await file.text(); setStatus('Running with projection CSV...'); els.runBtn.disabled=true;
+try{const contestProfile=buildContestProfile(); const payload={csv,date:els.date.value,sport:els.sport.value.toLowerCase(),platform:els.platform.value.toLowerCase(),slateType:els.slateType.value.toLowerCase(),contestType:els.contestType.value,maxEntries:numOrNull(els.maxEntries.value),lineupsPlaying:numOrNull(els.lineupsPlaying.value),pctPaidToFirst:numOrNull(els.pctPaidToFirst.value),contestProfile,showRawAdminData:els.showRaw.checked};
+const r=await fetch('/admin/upside-engine/run',{method:'POST',headers:{'content-type':'application/json','x-admin-token':els.adminToken.value},body:JSON.stringify(payload)}); const j=await parseJsonResponse(r); if(!r.ok) return setStatus(j.message||'Run failed',true); setStatus(`Engine complete: ${j.publicResult.length} players.`); players=j.publicResult; window.lastLineups=j.lineups||[]; hydrateFilters(); render(); }
+catch(error){setStatus(error.message||'Run failed',true);} finally{els.runBtn.disabled=false;} };
+
+async function parseJsonResponse(response){
+  const text=await response.text();
+  if(!text) return {};
+  try{return JSON.parse(text);}catch(error){return {message:text.slice(0,240)||'Server returned an unreadable response.'};}
+}
 ["search","tierFilter","roleFilter","contestFilter","teamFilter","sort"].forEach(k=>els[k].oninput=render);
 document.querySelectorAll('th[data-sort]').forEach(th=>th.onclick=()=>toggleSort(th.dataset.sort));
 
