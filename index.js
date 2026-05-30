@@ -2,6 +2,7 @@ import "dotenv/config";
 import express from "express";
 import cors from "cors";
 import { getSupabase, insertScanLog } from "./src/supabaseClient.js";
+import { captainTierForPlayer } from "./src/captainTiers.js";
 import { CONTEST_TYPES, SUPPORTED_SPORTS, contestFitMatches, inferContestType, normalizeSite, normalizeSlateType, normalizeSport } from "./src/contestRules.js";
 import { LegalDataSourceError, sourceHealth, mergeProjectionRows, validateLegalDataSources } from "./src/legalDataClient.js";
 import { applyOwnership } from "./src/ownershipEngine.js";
@@ -504,7 +505,17 @@ async function fetchPlayers({ sport, slate_type, site, date, limit = 50, filters
 
   const { data, error } = await query;
   if (error) throw new Error(error.message);
-  return data || [];
+  return (data || []).map(withCaptainTierLabel);
+}
+
+function withCaptainTierLabel(player) {
+  if (String(player.slate_type || "").toLowerCase() !== "showdown") return player;
+  const captainTier = captainTierForPlayer(player);
+  return {
+    ...player,
+    captain_tier: captainTier,
+    captainTier
+  };
 }
 
 async function resolveSlateIds({ supabase, sport, slate_type, site, date }) {
@@ -605,6 +616,7 @@ function toDbPlayer(player) {
     slate_breaker_tag: player.slate_breaker_tag,
     showdown_captain_score: player.showdown_captain_score,
     showdown_flex_score: player.showdown_flex_score,
+    captain_tier: captainTierForPlayer(player),
     captain_ownership_risk: player.captain_ownership_risk,
     duplication_risk: player.duplication_risk,
     game_script_fit: player.game_script_fit
@@ -693,6 +705,7 @@ function toProjectionFeedRow(player, generatedAt) {
     slate_breaker: Boolean(player.slate_breaker_tag),
     showdown_captain_score: Number(player.showdown_captain_score || 0),
     showdown_flex_score: Number(player.showdown_flex_score || 0),
+    captain_tier: captainTierForPlayer(player),
     confidence_score: projectionConfidence(player),
     model_version: "internal-dfs-v1",
     generated_at: generatedAt

@@ -1,3 +1,5 @@
+import { captainTierForPlayer } from "./captainTiers.js";
+
 const round = (value, places = 2) => Number((Number(value) || 0).toFixed(places));
 const clamp = (value, min = 0, max = 100) => Math.max(min, Math.min(max, safeNum(value, min)));
 const safeNum = (value, fallback = 0) => Number.isFinite(Number(value)) ? Number(value) : fallback;
@@ -158,6 +160,7 @@ function prepareCandidates(players, options) {
       _contestFitTag: String(player.contest_fit_tag || ""),
       _captainScore: safeNum(player.showdown_captain_score),
       _flexScore: safeNum(player.showdown_flex_score),
+      _captainTier: captainTierForPlayer(player),
       _captainRisk: String(player.captain_ownership_risk || ""),
       _duplicationRisk: String(player.duplication_risk || "")
     }))
@@ -258,6 +261,7 @@ function lineupPlayer(player, slot, projectionMultiplier, salaryMultiplier) {
     fake_chalk_warning: player._fakeChalk,
     single_entry_grade: player._singleEntryGrade,
     contest_fit_tag: player._contestFitTag,
+    captain_tier: player._captainTier,
     captain_ownership_risk: player._captainRisk,
     duplication_risk: player._duplicationRisk,
     strategy_score: round(playerStrategyScore(player, slot))

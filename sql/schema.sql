@@ -54,6 +54,7 @@ create table if not exists dfs_players (
   slate_breaker_tag boolean default false,
   showdown_captain_score numeric,
   showdown_flex_score numeric,
+  captain_tier text,
   captain_ownership_risk text,
   duplication_risk text,
   game_script_fit text,
@@ -66,6 +67,9 @@ add column if not exists estimated_ownership numeric;
 
 alter table dfs_players
 add column if not exists projected_minutes numeric;
+
+alter table dfs_players
+add column if not exists captain_tier text;
 
 create unique index if not exists dfs_players_unique_slate_player_slot
 on dfs_players (slate_id, site, player_id, roster_slot);
