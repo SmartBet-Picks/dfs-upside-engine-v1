@@ -12,7 +12,10 @@
   <section class='panel'>
     <h2>Admin Runner (Private)</h2>
     <input id='adminToken' placeholder='Admin API token' type='password'>
-    <input id='csvFile' type='file' accept='.csv'>
+    <div class='fileGrid'>
+      <label>Projection CSV <input id='csvFile' type='file' accept='.csv'></label>
+      <label>Contest Entry File (optional) <input id='entryFile' type='file' accept='.csv'></label>
+    </div>
     <div class='grid'>
       <input id='date' type='date'>
       <select id='sport'><option>NBA</option><option>NFL</option><option>MLB</option><option>MMA</option><option>GOLF</option><option>NASCAR</option></select>

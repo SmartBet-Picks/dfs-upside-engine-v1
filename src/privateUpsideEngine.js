@@ -35,10 +35,11 @@ export function requireAdmin(req, res, next) {
 }
 
 export function runPrivateUpsideEngine(req, res) {
-  const { csv, date, sport, platform, slateType, contestType, maxEntries, lineupsPlaying, pctPaidToFirst, showRawAdminData = false } = req.body || {};
+  const { csv, entryCsv, entryFileName, date, sport, platform, slateType, contestType, maxEntries, lineupsPlaying, pctPaidToFirst, showRawAdminData = false } = req.body || {};
   if (!csv || !date || !sport || !platform || !slateType || !contestType) return res.status(400).json({ error: true, message: "Missing required fields." });
   const { rows, diagnostics } = parseCsv(csv);
   if (!rows.length) return res.status(400).json({ error: true, message: "CSV contains no data rows." });
+  const entryDiagnostics = entryCsv ? parseContestEntryCsv(entryCsv, entryFileName) : null;
   const normalizedSlateType = normalizeSlateType(slateType);
   const normalizedSport = normalizeSport(sport);
   const normalizedPlatform = normalizePlatform(platform);
@@ -48,7 +49,8 @@ export function runPrivateUpsideEngine(req, res) {
     .slice(0, 8)
     .map((p) => ({ name: p.name, team: p.team, rawCeiling: p.ceiling, projection: p.projection, ownership: p.ownership, bust: p.bust, salary: p.salary }));
   const { eligiblePlayers, excludedPlayers } = splitEligiblePlayers(mapped);
-  const scored = scoreRows(eligiblePlayers, { slateType: normalizedSlateType, contestType, maxEntries, lineupsPlaying, pctPaidToFirst });
+  const effectiveLineupsPlaying = toNullableNumber(lineupsPlaying) || entryDiagnostics?.totalEntries || null;
+  const scored = scoreRows(eligiblePlayers, { slateType: normalizedSlateType, contestType, maxEntries, lineupsPlaying: effectiveLineupsPlaying, pctPaidToFirst });
   const captainDebugTop = [...scored]
     .sort((a, b) => b.ceiling - a.ceiling)
     .slice(0, 8)
@@ -81,7 +83,7 @@ export function runPrivateUpsideEngine(req, res) {
   const publicResult = scored.map(toPublicResult);
   const adminResult = scored.map((p) => showRawAdminData ? p : toPublicResult(p));
   const bestPlay = recommendBestPlay(scored, normalizedSlateType);
-  const lineups = buildPrivateLineups(scored, { sport: normalizedSport, platform: normalizedPlatform, slateType: normalizedSlateType, lineupsPlaying, maxEntries });
+  const lineups = buildPrivateLineups(scored, { sport: normalizedSport, platform: normalizedPlatform, slateType: normalizedSlateType, lineupsPlaying: effectiveLineupsPlaying, maxEntries });
 
   state.latest = {
     metadata: {
@@ -91,10 +93,12 @@ export function runPrivateUpsideEngine(req, res) {
       slateType: normalizedSlateType,
       contestType,
       maxEntries: toNullableNumber(maxEntries),
-      lineupsPlaying: toNullableNumber(lineupsPlaying),
+      lineupsPlaying: effectiveLineupsPlaying,
+      uploadedLineupsPlaying: toNullableNumber(lineupsPlaying),
       pctPaidToFirst: toNullableNumber(pctPaidToFirst),
       generatedAt: new Date().toISOString(),
       csvDiagnostics: diagnostics,
+      contestEntryFile: entryDiagnostics,
       bestPlay,
       bestCaptain: normalizedSlateType === "showdown" ? bestPlay : null,
       excludedPlayers: excludedPlayers.map(({ id, name, team, position, projection, minutes, exclusionReason }) => ({ id, name, team, position, projection, minutes, exclusionReason })),
@@ -169,6 +173,36 @@ function parseCsv(csv) {
     }
   };
 }
+
+function parseContestEntryCsv(csv, fileName = "") {
+  const records = parseCsvRecords(csv);
+  if (!records.length) return { fileName, totalEntries: 0, headers: [], entryIdColumns: [], lineupColumns: [], entriesWithLineups: 0, emptyEntries: 0 };
+  const headers = records[0].map(normalizeKey);
+  const rows = records.slice(1)
+    .map((vals) => {
+      const row = {};
+      headers.forEach((h, i) => (row[h] = vals[i] ?? ""));
+      return row;
+    })
+    .filter((row) => Object.values(row).some((value) => String(value || "").trim() !== ""));
+  const entryIdColumns = headers.filter((header) => /(^|_)entry(_|$)|entryid|contest|lineup(_id)?/.test(header));
+  const lineupColumns = headers.filter((header) => isContestLineupColumn(header));
+  const entriesWithLineups = rows.filter((row) => lineupColumns.some((header) => String(row[header] || "").trim())).length;
+
+  return {
+    fileName: String(fileName || "").trim(),
+    totalEntries: rows.length,
+    headers,
+    entryIdColumns,
+    lineupColumns,
+    entriesWithLineups,
+    emptyEntries: Math.max(0, rows.length - entriesWithLineups)
+  };
+}
+function isContestLineupColumn(header) {
+  return /^(cpt|captain|mvp|star|pro|flex\d*|util\d*|pg|sg|sf|pf|c|g|f|p|sp|rp|qb|rb|wr|te|dst|def|of|1b|2b|3b|ss|driver|golfer)$/.test(header);
+}
+
 function parseCsvRecords(csv) {
   const text = String(csv || "").replace(/^﻿/, "");
   const rows = [];

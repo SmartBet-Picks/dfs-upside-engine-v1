@@ -19,6 +19,8 @@
 ```json
 {
   "csv": "name,team,position,salary,projection,ceiling,floor,ownership,boom,bust,value,minutes\n...",
+  "entryCsv": "Entry ID,Contest Name,PG,SG,SF,PF,C,G,F,UTIL\n...",
+  "entryFileName": "draftkings-entries.csv",
   "date": "2026-05-26",
   "sport": "nba",
   "platform": "draftkings",
@@ -35,7 +37,7 @@
 - DraftKings MMA classic CSVs with `Name + ID`, `Position`/`Roster Position`, `Salary`, and `AvgPointsPerGame` are accepted.
 
 ## Privacy Model
-- Raw CSV input stays server-side in private scoring flow.
+- Raw projection CSV and optional contest entry CSV input stay server-side in the private scoring flow.
 - Public API excludes raw projection, ceiling, floor, ownership, boom, and bust source numbers.
 - Admin result can include raw fields only when `showRawAdminData=true`.
 
