@@ -52,17 +52,22 @@ function renderInsights(rows){
   if(!els.insights) return;
   if(!rows.length){els.insights.innerHTML=''; return;}
   const topElite=rows.reduce((best,p)=>!best||numOrZero(p.eliteScore)>numOrZero(best.eliteScore)?p:best,null);
-  const safest=rows.reduce((best,p)=>!best||numOrZero(p.bustRiskScore)<numOrZero(best.bustRiskScore)?p:best,null);
+  const safest=rows.reduce((best,p)=>!best||floorSafetyScore(p)>floorSafetyScore(best)?p:best,null);
   const topExact=rows.reduce((best,p)=>!best||numOrZero(p.exactContestScore)>numOrZero(best.exactContestScore)?p:best,null);
   const avgElite=Math.round(rows.reduce((sum,p)=>sum+numOrZero(p.eliteScore),0)/rows.length);
   els.insights.innerHTML=[
     insightCard('Top Elite Play', `${topElite.playerName} (${pct(topElite.eliteScore)})`),
     insightCard('Exact Contest', `${topExact.playerName} (${pct(topExact.exactContestScore)})`),
-    insightCard('Safest Floor', `${safest.playerName} (${pct(100-numOrZero(safest.bustRiskScore))} floor)`),
+    insightCard('Safest Floor', `${safest.playerName} (${pct(floorSafetyScore(safest))} floor)`),
     insightCard('Slate Avg Elite', `${avgElite}% across ${rows.length} players`)
   ].join('');
 }
 function insightCard(label,value){return `<article class='insightCard'><div class='insightLabel'>${label}</div><div class='insightValue'>${value}</div></article>`;}
+function floorSafetyScore(p){
+  const explicit=Number(p.floorSafetyScore);
+  if(Number.isFinite(explicit)) return explicit;
+  return 100-numOrZero(p.bustRiskScore);
+}
 function harmonizeExplanation(p){
   const contest=p.contestFit||'';
   let text=String(p.explanation||'');
