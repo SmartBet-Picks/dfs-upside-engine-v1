@@ -62,6 +62,17 @@
 - Set `slateType` to `showdown` for CPT/FLEX multiplier builds; the engine returns captain/flex scores and showdown lineups.
 - DraftKings MMA classic CSVs with `Name + ID`, `Position`/`Roster Position`, `Salary`, and `AvgPointsPerGame` are accepted.
 
+
+## Elite portfolio controls
+- `/api/optimize` now runs a portfolio-aware entry selection pass after lineup generation.
+- Optional request fields:
+  - `max_player_exposure_pct` / `maxPlayerExposurePct` - caps how often any non-locked player can appear in recommended submissions.
+  - `max_captain_exposure_pct` / `maxCaptainExposurePct` - caps showdown captain concentration.
+  - `portfolio_min_unique_players` / `portfolioMinUniquePlayers` - requires lineups to differ by a minimum number of players during recommended-entry selection.
+  - `locks` - locked players are allowed to exceed exposure caps when you intentionally want a core stand.
+- Optimize responses include `portfolio_constraints`, `constraint_notes`, and an `exposure_report` with player exposure, captain exposure, archetype mix, average projection/ceiling/ownership, and max exposure metrics.
+- The repository includes a Node test suite covering portfolio exposure caps, legal NBA lineup generation, simulation analytics, and CSV analytics columns. Run it with `npm test`.
+
 ## Privacy Model
 - Raw projection CSV and optional contest entry CSV input stay server-side in the private scoring flow.
 - Public API excludes raw projection, ceiling, floor, ownership, boom, and bust source numbers.

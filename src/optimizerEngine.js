@@ -1,4 +1,5 @@
 const round = (value, places = 2) => Number((Number(value) || 0).toFixed(places));
+const clamp = (value, min = 0, max = 100) => Math.max(min, Math.min(max, safeNum(value, min)));
 const safeNum = (value, fallback = 0) => Number.isFinite(Number(value)) ? Number(value) : fallback;
 
 const CLASSIC_RULES = {
@@ -35,15 +36,23 @@ export function buildEntryPortfolio(lineups = [], options = {}) {
   const entriesPlayed = clampInt(options.entries_played ?? options.entriesPlayed ?? contestMaxEntries, 1, Math.max(1, lineups.length || 1));
   const fieldSize = clampInt(options.field_size ?? options.fieldSize ?? 5000, 2, 500000);
   const profile = resolveEntryProfile(entriesPlayed, fieldSize);
+  const constraints = resolvePortfolioConstraints(options, entriesPlayed, profile);
   const ranked = [...lineups].sort((a, b) => entryAwareScore(b, profile) - entryAwareScore(a, profile));
-  const recommended = ranked.slice(0, entriesPlayed).map((lineup, index) => ({ ...lineup, submit_rank: index + 1, entry_aware_score: round(entryAwareScore(lineup, profile)) }));
-  const alternates = ranked.slice(entriesPlayed).map((lineup) => ({ ...lineup, entry_aware_score: round(entryAwareScore(lineup, profile)) }));
+  const { selected, constraintNotes } = selectPortfolioLineups(ranked, entriesPlayed, constraints);
+  const selectedIds = new Set(selected.map((lineup) => lineup.lineup_id));
+  const recommended = selected.map((lineup, index) => ({ ...lineup, submit_rank: index + 1, entry_aware_score: round(entryAwareScore(lineup, profile)) }));
+  const alternates = ranked
+    .filter((lineup) => !selectedIds.has(lineup.lineup_id))
+    .map((lineup) => ({ ...lineup, entry_aware_score: round(entryAwareScore(lineup, profile)) }));
 
   return {
     entries_played: entriesPlayed,
     contest_max_entries: contestMaxEntries,
     field_size: fieldSize,
     entry_profile: profile.name,
+    portfolio_constraints: constraints.public,
+    constraint_notes: constraintNotes,
+    exposure_report: buildExposureReport(recommended),
     recommended,
     alternates
   };
@@ -370,6 +379,152 @@ function resolveEntryProfile(entriesPlayed, fieldSize) {
   if (entriesPlayed <= 20) return { name: "balanced", volatilityWeight: -0.04, ownershipWeight: -0.03, leverageWeight: 0.16, projectionWeight: 0.34 };
   if (fieldSize >= 20000) return { name: "max_upside", volatilityWeight: 0.06, ownershipWeight: -0.01, leverageWeight: 0.25, projectionWeight: 0.26 };
   return { name: "portfolio", volatilityWeight: 0.03, ownershipWeight: -0.02, leverageWeight: 0.2, projectionWeight: 0.3 };
+}
+
+function resolvePortfolioConstraints(options, entriesPlayed, profile) {
+  const maxPlayerExposurePct = clampPct(
+    options.max_player_exposure_pct ?? options.maxPlayerExposurePct,
+    defaultMaxPlayerExposurePct(entriesPlayed, profile)
+  );
+  const maxCaptainExposurePct = clampPct(
+    options.max_captain_exposure_pct ?? options.maxCaptainExposurePct,
+    entriesPlayed <= 3 ? 100 : 45
+  );
+  const minUniquePlayers = clampInt(
+    options.portfolio_min_unique_players ?? options.portfolioMinUniquePlayers,
+    entriesPlayed <= 3 ? 0 : 2,
+    8
+  );
+  const lockedPlayers = normalizeNameSet(options.locks);
+
+  return {
+    maxPlayerAppearances: pctToAppearances(maxPlayerExposurePct, entriesPlayed),
+    maxCaptainAppearances: pctToAppearances(maxCaptainExposurePct, entriesPlayed),
+    minUniquePlayers,
+    lockedPlayers,
+    public: {
+      max_player_exposure_pct: maxPlayerExposurePct,
+      max_player_appearances: pctToAppearances(maxPlayerExposurePct, entriesPlayed),
+      max_captain_exposure_pct: maxCaptainExposurePct,
+      max_captain_appearances: pctToAppearances(maxCaptainExposurePct, entriesPlayed),
+      min_unique_players: minUniquePlayers,
+      locked_players: [...lockedPlayers]
+    }
+  };
+}
+
+function defaultMaxPlayerExposurePct(entriesPlayed, profile) {
+  if (entriesPlayed <= 3) return 100;
+  if (profile.name === "tight") return 85;
+  if (profile.name === "balanced") return 70;
+  if (profile.name === "max_upside") return 45;
+  return 55;
+}
+
+function clampPct(value, fallback) {
+  const number = safeNum(value, fallback);
+  return Math.max(1, Math.min(100, round(number, 1)));
+}
+
+function pctToAppearances(pct, entriesPlayed) {
+  return Math.max(1, Math.ceil(entriesPlayed * (pct / 100)));
+}
+
+function selectPortfolioLineups(ranked, entriesPlayed, constraints) {
+  const selected = [];
+  const exposure = new Map();
+  const captainExposure = new Map();
+  const constraintNotes = [];
+
+  for (const lineup of ranked) {
+    if (selected.length >= entriesPlayed) break;
+    if (!lineupFitsPortfolio(lineup, selected, exposure, captainExposure, constraints)) continue;
+    addPortfolioLineup(lineup, selected, exposure, captainExposure);
+  }
+
+  if (selected.length < entriesPlayed) {
+    constraintNotes.push(`Exposure/uniqueness guardrails produced ${selected.length} of ${entriesPlayed} requested entries; filling remaining slots by entry-aware rank.`);
+    for (const lineup of ranked) {
+      if (selected.length >= entriesPlayed) break;
+      if (selected.some((selectedLineup) => selectedLineup.lineup_id === lineup.lineup_id)) continue;
+      addPortfolioLineup(lineup, selected, exposure, captainExposure);
+    }
+  }
+
+  return { selected, constraintNotes };
+}
+
+function lineupFitsPortfolio(lineup, selected, exposure, captainExposure, constraints) {
+  if (constraints.minUniquePlayers && selected.some((selectedLineup) => uniquePlayerDifference(lineup, selectedLineup) < constraints.minUniquePlayers)) return false;
+
+  for (const player of lineup.players || []) {
+    const name = normalizeName(player.player_name);
+    if (constraints.lockedPlayers.has(name)) continue;
+    if ((exposure.get(name) || 0) + 1 > constraints.maxPlayerAppearances) return false;
+  }
+
+  const captain = (lineup.players || []).find((player) => player.slot === "CPT");
+  if (captain) {
+    const captainName = normalizeName(captain.player_name);
+    if (!constraints.lockedPlayers.has(captainName) && (captainExposure.get(captainName) || 0) + 1 > constraints.maxCaptainAppearances) return false;
+  }
+
+  return true;
+}
+
+function addPortfolioLineup(lineup, selected, exposure, captainExposure) {
+  selected.push(lineup);
+  for (const player of lineup.players || []) {
+    const name = normalizeName(player.player_name);
+    exposure.set(name, (exposure.get(name) || 0) + 1);
+    if (player.slot === "CPT") captainExposure.set(name, (captainExposure.get(name) || 0) + 1);
+  }
+}
+
+function buildExposureReport(lineups = []) {
+  const total = Math.max(1, lineups.length);
+  const playerMap = new Map();
+  const archetypeCounts = new Map();
+
+  for (const lineup of lineups) {
+    archetypeCounts.set(lineup.archetype || "Unclassified", (archetypeCounts.get(lineup.archetype || "Unclassified") || 0) + 1);
+    for (const player of lineup.players || []) {
+      const key = normalizeName(player.player_name);
+      const current = playerMap.get(key) || { player_name: player.player_name, team: player.team, positions: new Set(), count: 0, captain_count: 0, total_salary: 0, total_ownership: 0 };
+      current.positions.add(player.position || player.slot || "UTIL");
+      current.count += 1;
+      current.captain_count += player.slot === "CPT" ? 1 : 0;
+      current.total_salary += safeNum(player.salary);
+      current.total_ownership += safeNum(player.ownership);
+      playerMap.set(key, current);
+    }
+  }
+
+  const playerExposure = [...playerMap.values()]
+    .map((player) => ({
+      player_name: player.player_name,
+      team: player.team,
+      positions: [...player.positions].join("/"),
+      lineups: player.count,
+      exposure_pct: round((player.count / total) * 100, 1),
+      captain_lineups: player.captain_count,
+      captain_exposure_pct: round((player.captain_count / total) * 100, 1),
+      avg_salary: round(player.total_salary / player.count),
+      avg_ownership: round(player.total_ownership / player.count)
+    }))
+    .sort((a, b) => b.exposure_pct - a.exposure_pct || b.captain_exposure_pct - a.captain_exposure_pct || a.player_name.localeCompare(b.player_name));
+
+  return {
+    lineup_count: lineups.length,
+    unique_players: playerExposure.length,
+    average_projection: round(avg(lineups, "projection")),
+    average_ceiling: round(avg(lineups, "ceiling")),
+    average_ownership: round(avg(lineups, "ownership")),
+    max_player_exposure_pct: playerExposure[0]?.exposure_pct || 0,
+    max_captain_exposure_pct: Math.max(0, ...playerExposure.map((player) => player.captain_exposure_pct)),
+    archetypes: [...archetypeCounts.entries()].map(([archetype, count]) => ({ archetype, count, pct: round((count / total) * 100, 1) })),
+    players: playerExposure
+  };
 }
 
 function entryAwareScore(lineup, profile) {
