@@ -2,6 +2,7 @@ import "dotenv/config";
 import express from "express";
 import cors from "cors";
 import { getSupabase, insertScanLog } from "./src/supabaseClient.js";
+import { captainTierForPlayer } from "./src/captainTiers.js";
 import { CONTEST_TYPES, SUPPORTED_SPORTS, contestFitMatches, inferContestType, normalizeSite, normalizeSlateType, normalizeSport } from "./src/contestRules.js";
 import { LegalDataSourceError, sourceHealth, mergeProjectionRows, validateLegalDataSources } from "./src/legalDataClient.js";
 import { applyOwnership } from "./src/ownershipEngine.js";
@@ -515,20 +516,6 @@ function withCaptainTierLabel(player) {
     captain_tier: captainTier,
     captainTier
   };
-}
-
-function captainTierForPlayer(player) {
-  if (String(player.slate_type || "").toLowerCase() !== "showdown") return player.captain_tier || null;
-  return player.captain_tier || deriveCaptainTier(player.showdown_captain_score);
-}
-
-function deriveCaptainTier(captainScore) {
-  const score = Number(captainScore || 0);
-  if (score >= 75) return "Elite Captain";
-  if (score >= 58) return "Strong Captain";
-  if (score >= 48) return "Viable Captain";
-  if (score >= 35) return "Thin Captain";
-  return "Avoid Captain";
 }
 
 async function resolveSlateIds({ supabase, sport, slate_type, site, date }) {

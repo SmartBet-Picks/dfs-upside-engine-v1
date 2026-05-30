@@ -1,3 +1,5 @@
+import { captainTierForPlayer } from "./captainTiers.js";
+
 const round = (value, places = 2) => Number((Number(value) || 0).toFixed(places));
 const clamp = (value, min = 0, max = 100) => Math.max(min, Math.min(max, safeNum(value, min)));
 const safeNum = (value, fallback = 0) => Number.isFinite(Number(value)) ? Number(value) : fallback;
@@ -158,7 +160,7 @@ function prepareCandidates(players, options) {
       _contestFitTag: String(player.contest_fit_tag || ""),
       _captainScore: safeNum(player.showdown_captain_score),
       _flexScore: safeNum(player.showdown_flex_score),
-      _captainTier: player.captain_tier || deriveCaptainTier(player.showdown_captain_score),
+      _captainTier: captainTierForPlayer(player),
       _captainRisk: String(player.captain_ownership_risk || ""),
       _duplicationRisk: String(player.duplication_risk || "")
     }))
@@ -351,15 +353,6 @@ function simulatePlayer(player, seed) {
   if (rand < bust) return interpolate(player.floor, player.projection, rand / Math.max(bust, 0.01));
   if (rand > 1 - boom) return interpolate(player.projection, player.ceiling, (rand - (1 - boom)) / Math.max(boom, 0.01));
   return interpolate(player.floor, player.ceiling, rand);
-}
-
-function deriveCaptainTier(captainScore) {
-  const score = safeNum(captainScore);
-  if (score >= 75) return "Elite Captain";
-  if (score >= 58) return "Strong Captain";
-  if (score >= 48) return "Viable Captain";
-  if (score >= 35) return "Thin Captain";
-  return "Avoid Captain";
 }
 
 function playerObjective(player, objective, slot) {
