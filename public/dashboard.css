@@ -5,8 +5,14 @@ body{margin:0;background:var(--bg);color:var(--text);font-family:Inter,system-ui
 .grid,.filters{display:grid;gap:8px;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));margin:8px 0}
 input,select,button{padding:10px;border-radius:8px;border:1px solid var(--line);background:#0f1622;color:var(--text)}
 button{background:var(--green);color:#05170f;font-weight:700}
-table{width:100%;border-collapse:collapse;min-width:1100px}
-th,td{padding:8px;border-bottom:1px solid var(--line);text-align:left}
+table{width:100%;border-collapse:collapse;min-width:960px;table-layout:fixed;font-size:13px}
+th,td{padding:6px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}
+th{font-size:12px;letter-spacing:.01em}
+td{line-height:1.25}
+.col-player{width:150px}.col-team{width:50px}.col-pos{width:42px}.col-salary{width:62px}.col-role{width:96px}.col-fit{width:92px}.col-env{width:108px}.col-score{width:46px}.col-value{width:84px}.col-explanation{width:190px}.col-secondary{display:none}
+.col-explanation,.explanationCell{white-space:normal}.explanationCell{font-size:12px;color:#c5cfde}
+.roleBadge,.envBadge{white-space:nowrap;max-width:100%;overflow:hidden;text-overflow:ellipsis}
+@media(max-width:900px){table{min-width:820px}.col-env,.col-value{display:none}.col-explanation{width:160px}.col-role{width:88px}.col-fit{width:84px}}
 thead th{position:sticky;top:0;background:var(--panel);z-index:2}
 th[data-sort]{cursor:pointer;user-select:none}
 th.sorted{color:#9ed6ff}
