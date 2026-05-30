@@ -12,9 +12,27 @@
   <section class='panel'>
     <h2>Admin Runner (Private)</h2>
     <input id='adminToken' placeholder='Admin API token' type='password'>
-    <div class='fileGrid'>
-      <label>Projection CSV <input id='csvFile' type='file' accept='.csv'></label>
-      <label>Contest Entry File (optional) <input id='entryFile' type='file' accept='.csv'></label>
+    <div class='uploadGrid' aria-label='Upload files'>
+      <section class='uploadCard' aria-labelledby='csvUploadTitle'>
+        <div>
+          <p class='uploadEyebrow'>Required</p>
+          <h3 id='csvUploadTitle'>CSV Upload</h3>
+          <p class='uploadHelp'>Upload your player projection CSV to power the DFS Upside Engine run.</p>
+        </div>
+        <label class='filePicker' for='csvFile'>Projection CSV
+          <input id='csvFile' type='file' accept='.csv'>
+        </label>
+      </section>
+      <section class='uploadCard' aria-labelledby='entryUploadTitle'>
+        <div>
+          <p class='uploadEyebrow'>Optional</p>
+          <h3 id='entryUploadTitle'>Entry Upload</h3>
+          <p class='uploadHelp'>Add a contest entry file separately when you want entry-aware portfolio output.</p>
+        </div>
+        <label class='filePicker' for='entryFile'>Contest Entry File
+          <input id='entryFile' type='file' accept='.csv'>
+        </label>
+      </section>
     </div>
     <div class='grid'>
       <input id='date' type='date'>
