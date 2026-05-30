@@ -2,7 +2,7 @@
 body{margin:0;background:var(--bg);color:var(--text);font-family:Inter,system-ui}
 .shell{max-width:1300px;margin:auto;padding:16px}
 .panel{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px;margin-bottom:12px}
-.grid,.filters,.fileGrid{display:grid;gap:8px;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));margin:8px 0}
+.grid,.filters{display:grid;gap:8px;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));margin:8px 0}
 input,select,button{padding:10px;border-radius:8px;border:1px solid var(--line);background:#0f1622;color:var(--text)}
 button{background:var(--green);color:#05170f;font-weight:700}
 table{width:100%;border-collapse:collapse;min-width:1100px}
@@ -25,12 +25,18 @@ th.sorted{color:#9ed6ff}
 .insightCard{background:#101a2b;border:1px solid var(--line);border-radius:10px;padding:10px}
 .insightLabel{font-size:12px;opacity:.8;text-transform:uppercase;letter-spacing:.04em}
 .insightValue{font-weight:700;font-size:15px;margin-top:4px}
-@media(max-width:700px){.shell{padding:10px}}
+
+.uploadGrid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin:10px 0 14px}
+.uploadCard{display:flex;flex-direction:column;justify-content:space-between;gap:14px;min-height:150px;padding:14px;border:1px solid #344258;border-radius:12px;background:linear-gradient(145deg,#101a2b,#0d1420)}
+.uploadCard h3{margin:2px 0 6px;font-size:20px}
+.uploadEyebrow{margin:0;color:#9ed6ff;font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase}
+.uploadHelp{margin:0;color:#b9c4d6;font-size:13px;line-height:1.4}
+.filePicker{display:grid;gap:8px;color:var(--text);font-size:13px;font-weight:700}
+.filePicker input{width:100%;box-sizing:border-box}
+@media(max-width:700px){.uploadGrid{grid-template-columns:1fr}.shell{padding:10px}}
 .envBadge{padding:3px 8px;border:1px solid #3b4e68;border-radius:999px;background:#0d2238;color:#9ed6ff;font-size:12px}
 .lineupCards{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:10px;margin:10px 0}
 .lineupCard{background:#0f1622;border:1px solid var(--line);border-radius:10px;padding:10px}
 .meters{display:flex;gap:10px;font-size:12px;opacity:.9;margin-top:6px}
 .dup{padding:2px 8px;border-radius:999px;font-size:11px;margin-left:6px}
 .dup.high{background:rgba(239,83,80,.2)} .dup.medium{background:rgba(242,184,74,.2)} .dup.low{background:rgba(35,196,131,.2)}
-
-.fileGrid label{display:grid;gap:6px;font-size:13px;opacity:.95}
