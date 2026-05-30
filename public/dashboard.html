@@ -39,11 +39,36 @@
       <select id='sport'><option>NBA</option><option>NFL</option><option>MLB</option><option>MMA</option><option>GOLF</option><option>NASCAR</option></select>
       <select id='platform'><option>DraftKings</option><option>FanDuel</option></select>
       <select id='slateType'><option>Classic</option><option>Showdown</option></select>
-      <select id='contestType'><option>Single Entry</option><option>3-Max</option><option>Small Field</option><option>Large Field GPP</option><option>Mini-MAX</option><option>Showdown</option></select>
+      <select id='contestType'><option>Single Entry</option><option>Cash</option><option>3-Max</option><option>Small Field GPP</option><option>Large Field GPP</option><option>Winner Take All</option><option>Satellite</option><option>Qualifier</option><option>Mini-MAX</option><option>Showdown</option></select>
       <input id='maxEntries' type='number' min='1' placeholder='Max entries allowed'>
       <input id='lineupsPlaying' type='number' min='1' placeholder='Lineups playing'>
       <input id='pctPaidToFirst' type='number' min='0' max='100' step='0.1' placeholder='% paid to first'>
     </div>
+    <section class='contestProfile' aria-labelledby='contestProfileTitle'>
+      <div class='sectionHeader'>
+        <div>
+          <p class='uploadEyebrow'>Recommended</p>
+          <h3 id='contestProfileTitle'>Contest Profile / Exact Contest Settings</h3>
+        </div>
+        <p class='uploadHelp'>Manual contest details tune player scores, best-play recommendations, and lineup archetypes without direct platform scraping.</p>
+      </div>
+      <div class='grid'>
+        <input id='contestName' placeholder='Contest name'>
+        <input id='contestId' placeholder='Contest ID (optional)'>
+        <input id='entryFee' type='number' min='0' step='0.01' placeholder='Entry fee'>
+        <input id='fieldSize' type='number' min='1' placeholder='Total entries / field size'>
+        <input id='yourEntries' type='number' min='1' placeholder='Your entries'>
+        <input id='prizePool' type='number' min='0' step='0.01' placeholder='Prize pool'>
+        <input id='firstPlacePrize' type='number' min='0' step='0.01' placeholder='First place prize'>
+        <input id='paidSpots' type='number' min='0' placeholder='Number of paid spots'>
+        <input id='percentFieldPaid' type='number' min='0' max='100' step='0.1' placeholder='% field paid'>
+        <select id='lateSwapEnabled' aria-label='Late swap enabled'><option value=''>Late swap?</option><option value='true'>Late swap: Yes</option><option value='false'>Late swap: No</option></select>
+        <input id='slateName' placeholder='Slate name'>
+        <input id='slateStartTime' type='datetime-local' aria-label='Slate start time'>
+        <input id='topHeavyPayoutScore' type='number' min='1' max='100' placeholder='Top-heavy score (auto)'>
+        <select id='duplicationRiskTarget' aria-label='Duplication risk target'><option value=''>Dup risk target: Auto</option><option>Low</option><option>Medium</option><option>High</option></select>
+      </div>
+    </section>
     <label><input id='showRaw' type='checkbox'> Show Raw Admin Data (Private)</label>
     <button id='runBtn'>Run DFS Upside Engine</button>
   </section>
@@ -59,6 +84,7 @@
       <select id='teamFilter' aria-label='Team filter'><option value=''>Team: All</option></select>
       <select id='sort' aria-label='Sort by'>
         <option value='classicScore'>Sort: Classic</option>
+        <option value='exactContestScore'>Sort: Exact Contest</option>
         <option value='confidenceRating'>Sort: Confidence</option>
         <option value='boomScore'>Sort: Boom Score</option>
         <option value='ownershipLeverageScore'>Sort: Leverage</option>
@@ -69,7 +95,7 @@
       </select>
     </div>
     <div id='status'></div>
-    <div class='tableWrap'><table><thead><tr><th data-sort='playerName'>Player</th><th>Slate</th><th>Team</th><th>Pos</th><th data-sort='salary'>Salary</th><th>Role</th><th>Contest Fit</th><th>Captain Tier</th><th>Environment</th><th data-sort='confidenceRating'>Conf</th><th data-sort='boomScore'>Boom</th><th data-sort='bustRisk'>Bust</th><th data-sort='ownershipLeverageScore'>Lev</th><th data-sort='classicScore'>Classic</th><th data-sort='captainScore'>Cap</th><th data-sort='flexScore'>Flex</th><th data-sort='eliteScore'>Elite</th><th>Value</th><th>Explanation</th></tr></thead><tbody id='body'></tbody></table></div><h2>Lineup Archetypes</h2><div id='lineupCards' class='lineupCards'></div>
+    <div class='tableWrap'><table><thead><tr><th data-sort='playerName'>Player</th><th>Slate</th><th>Team</th><th>Pos</th><th data-sort='salary'>Salary</th><th>Role</th><th>Contest Fit</th><th>Captain Tier</th><th>Environment</th><th data-sort='confidenceRating'>Conf</th><th data-sort='boomScore'>Boom</th><th data-sort='bustRiskScore'>Bust</th><th data-sort='ownershipLeverageScore'>Lev</th><th data-sort='classicScore'>Classic</th><th data-sort='exactContestScore'>Exact</th><th data-sort='captainScore'>Cap</th><th data-sort='flexScore'>Flex</th><th data-sort='eliteScore'>Elite</th><th>Value</th><th>Explanation</th></tr></thead><tbody id='body'></tbody></table></div><h2>Lineup Archetypes</h2><div id='lineupCards' class='lineupCards'></div>
   </section>
 </main>
 <script src='/public/dashboard.js'></script>

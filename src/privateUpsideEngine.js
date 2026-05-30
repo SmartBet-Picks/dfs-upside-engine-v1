@@ -35,7 +35,7 @@ export function requireAdmin(req, res, next) {
 }
 
 export function runPrivateUpsideEngine(req, res) {
-  const { csv, entryCsv, entryFileName, date, sport, platform, slateType, contestType, maxEntries, lineupsPlaying, pctPaidToFirst, showRawAdminData = false } = req.body || {};
+  const { csv, entryCsv, entryFileName, date, sport, platform, slateType, contestType, maxEntries, lineupsPlaying, pctPaidToFirst, contestProfile: rawContestProfile, showRawAdminData = false } = req.body || {};
   if (!csv || !date || !sport || !platform || !slateType || !contestType) return res.status(400).json({ error: true, message: "Missing required fields." });
   const { rows, diagnostics } = parseCsv(csv);
   if (!rows.length) return res.status(400).json({ error: true, message: "CSV contains no data rows." });
@@ -43,6 +43,7 @@ export function runPrivateUpsideEngine(req, res) {
   const normalizedSlateType = normalizeSlateType(slateType);
   const normalizedSport = normalizeSport(sport);
   const normalizedPlatform = normalizePlatform(platform);
+  const contestProfile = normalizeContestProfile(rawContestProfile || req.body || {}, { platform, contestType, maxEntries, lineupsPlaying, pctPaidToFirst });
   const mapped = mapRows(rows);
   const rawTopCeilingPlayers = [...mapped]
     .sort((a, b) => b.ceiling - a.ceiling)
@@ -50,7 +51,8 @@ export function runPrivateUpsideEngine(req, res) {
     .map((p) => ({ name: p.name, team: p.team, rawCeiling: p.ceiling, projection: p.projection, ownership: p.ownership, bust: p.bust, salary: p.salary }));
   const { eligiblePlayers, excludedPlayers } = splitEligiblePlayers(mapped);
   const effectiveLineupsPlaying = toNullableNumber(lineupsPlaying) || entryDiagnostics?.totalEntries || null;
-  const scored = scoreRows(eligiblePlayers, { slateType: normalizedSlateType, contestType, maxEntries, lineupsPlaying: effectiveLineupsPlaying, pctPaidToFirst });
+  contestProfile.yourEntries = contestProfile.yourEntries || effectiveLineupsPlaying;
+  const scored = scoreRows(eligiblePlayers, { slateType: normalizedSlateType, contestType, maxEntries, lineupsPlaying: effectiveLineupsPlaying, pctPaidToFirst, contestProfile });
   const captainDebugTop = [...scored]
     .sort((a, b) => b.ceiling - a.ceiling)
     .slice(0, 8)
@@ -82,8 +84,9 @@ export function runPrivateUpsideEngine(req, res) {
   }
   const publicResult = scored.map(toPublicResult);
   const adminResult = scored.map((p) => showRawAdminData ? p : toPublicResult(p));
-  const bestPlay = recommendBestPlay(scored, normalizedSlateType);
-  const lineups = buildPrivateLineups(scored, { sport: normalizedSport, platform: normalizedPlatform, slateType: normalizedSlateType, lineupsPlaying: effectiveLineupsPlaying, maxEntries });
+  const recommendations = buildRecommendations(scored, normalizedSlateType);
+  const bestPlay = recommendations.bestExactContestPlay || recommendations.bestOverallPlay;
+  const lineups = buildPrivateLineups(scored, { sport: normalizedSport, platform: normalizedPlatform, slateType: normalizedSlateType, lineupsPlaying: effectiveLineupsPlaying, maxEntries, contestProfile });
 
   state.latest = {
     metadata: {
@@ -95,12 +98,14 @@ export function runPrivateUpsideEngine(req, res) {
       maxEntries: toNullableNumber(maxEntries),
       lineupsPlaying: effectiveLineupsPlaying,
       uploadedLineupsPlaying: toNullableNumber(lineupsPlaying),
-      pctPaidToFirst: toNullableNumber(pctPaidToFirst),
+      pctPaidToFirst: contestProfile.percentPaidToFirst,
+      contestProfile,
       generatedAt: new Date().toISOString(),
       csvDiagnostics: diagnostics,
       contestEntryFile: entryDiagnostics,
       bestPlay,
-      bestCaptain: normalizedSlateType === "showdown" ? bestPlay : null,
+      recommendations,
+      bestCaptain: recommendations.bestCaptain || (normalizedSlateType === "showdown" ? bestPlay : null),
       excludedPlayers: excludedPlayers.map(({ id, name, team, position, projection, minutes, exclusionReason }) => ({ id, name, team, position, projection, minutes, exclusionReason })),
       excludedPlayerCount: excludedPlayers.length,
       ...(showRawAdminData ? {
@@ -131,6 +136,84 @@ function normalizeContestLabel(value) {
   if (key === "large field gpp") return "Large Field GPP";
   if (key === "mini max" || key === "mini-max") return "Mini-MAX";
   return raw || "Classic";
+}
+
+
+function normalizeContestProfile(profile = {}, fallback = {}) {
+  const source = profile && typeof profile === "object" ? profile : {};
+  const contestType = normalizeContestLabel(source.contestType || fallback.contestType);
+  const fieldSize = toNullableNumber(source.fieldSize ?? source.totalEntries ?? source.entries ?? fallback.lineupsPlaying);
+  const maxEntries = toNullableNumber(source.maxEntries ?? fallback.maxEntries);
+  const yourEntries = toNullableNumber(source.yourEntries ?? source.lineupsPlaying ?? fallback.lineupsPlaying);
+  const prizePool = toNullableNumber(source.prizePool);
+  const firstPlacePrize = toNullableNumber(source.firstPlacePrize);
+  const paidSpots = toNullableNumber(source.paidSpots);
+  const percentPaidToFirst = toNullableNumber(source.percentPaidToFirst ?? fallback.pctPaidToFirst) || derivePercent(firstPlacePrize, prizePool);
+  const percentFieldPaid = toNullableNumber(source.percentFieldPaid) || derivePercent(paidSpots, fieldSize);
+  const entryFee = toNullableNumber(source.entryFee);
+  const rake = prizePool && entryFee && fieldSize ? Math.max(0, roundMetric(100 - (prizePool / (entryFee * fieldSize)) * 100)) : toNullableNumber(source.rake);
+  const topHeavyPayoutScore = toNullableNumber(source.topHeavyPayoutScore) || calculateTopHeavyPayoutScore({ percentPaidToFirst, percentFieldPaid, contestType, fieldSize });
+  const duplicationRiskTarget = normalizeRiskTarget(source.duplicationRiskTarget, { contestType, fieldSize, maxEntries, topHeavyPayoutScore });
+  return {
+    site: normalizePlatform(source.site || fallback.platform),
+    contestName: String(source.contestName || "").trim(),
+    contestId: String(source.contestId || "").trim(),
+    entryFee,
+    fieldSize,
+    maxEntries,
+    yourEntries,
+    prizePool,
+    firstPlacePrize,
+    percentPaidToFirst,
+    paidSpots,
+    percentFieldPaid,
+    contestType,
+    lateSwapEnabled: parseOptionalBool(source.lateSwapEnabled),
+    slateName: String(source.slateName || "").trim(),
+    slateStartTime: String(source.slateStartTime || "").trim(),
+    topHeavyPayoutScore,
+    duplicationRiskTarget,
+    rake
+  };
+}
+function derivePercent(part, whole) {
+  if (!part || !whole) return null;
+  return roundMetric((part / whole) * 100);
+}
+function calculateTopHeavyPayoutScore({ percentPaidToFirst, percentFieldPaid, contestType, fieldSize }) {
+  const type = normalizeContestLabel(contestType).toLowerCase();
+  let score = 35;
+  if (fieldSize >= 10000) score += 18;
+  else if (fieldSize >= 1000) score += 10;
+  else if (fieldSize && fieldSize <= 500) score -= 8;
+  score += Math.max(0, ((Number(percentPaidToFirst) || 0) - 10) * 2.2);
+  if (percentFieldPaid) score += Math.max(-18, Math.min(12, (20 - percentFieldPaid) * 1.2));
+  if (/winner|qualifier|satellite/.test(type)) score += 24;
+  if (/cash|double|head/.test(type)) score -= 30;
+  if (/single entry|small field/.test(type)) score -= 8;
+  return round(score);
+}
+function normalizeRiskTarget(value, { contestType, fieldSize, maxEntries, topHeavyPayoutScore }) {
+  const normalized = String(value || "").trim().toLowerCase();
+  if (["low", "medium", "high"].includes(normalized)) return normalized[0].toUpperCase() + normalized.slice(1);
+  const type = normalizeContestLabel(contestType).toLowerCase();
+  if (/cash|double|head|single entry/.test(type)) return "Low";
+  if ((fieldSize || 0) >= 5000 || (maxEntries || 0) >= 20 || (topHeavyPayoutScore || 0) >= 70) return "High";
+  return "Medium";
+}
+function parseOptionalBool(value) {
+  if (value === null || value === undefined || value === "") return null;
+  return bool(value);
+}
+function contestProfileKind(profile = {}) {
+  const type = normalizeContestLabel(profile.contestType).toLowerCase();
+  if (/cash|double|head/.test(type)) return "cash";
+  if (/winner|qualifier|satellite/.test(type)) return "winner_take_all";
+  if (/single entry/.test(type)) return "single_entry";
+  if (/3-max|3 max/.test(type)) return "three_max";
+  if (/small field/.test(type)) return "small_field";
+  if (/large field|gpp/.test(type) || (profile.fieldSize || 0) >= 5000 || (profile.topHeavyPayoutScore || 0) >= 68) return "large_field_gpp";
+  return "balanced";
 }
 
 export function getLatestPublicUpside(req, res) {
@@ -321,7 +404,8 @@ function norm(rows,key,invert=false){
     r[`${key}_n`]=Math.max(0,Math.min(100,n));
   });
 }
-function scoreRows(rows,{slateType,contestType,maxEntries,lineupsPlaying,pctPaidToFirst}){const settings = buildContestSettings({ maxEntries, lineupsPlaying, pctPaidToFirst });["projection","ceiling","value","ownership","boom","bust","salary","minutes","floor","game_total","team_total","pace"].forEach(k=>norm(rows,k,k==="ownership"||k==="salary"||k==="bust"));
+function scoreRows(rows,{slateType,contestType,maxEntries,lineupsPlaying,pctPaidToFirst,contestProfile}){const settings = buildContestSettings({ maxEntries, lineupsPlaying, pctPaidToFirst, contestProfile });
+const profileKind = contestProfileKind(contestProfile);["projection","ceiling","value","ownership","boom","bust","salary","minutes","floor","game_total","team_total","pace"].forEach(k=>norm(rows,k,k==="ownership"||k==="salary"||k==="bust"));
 norm(rows,"usage");
 norm(rows,"volatility",true);
 const spreadVals = rows.map(r=>Math.abs(r.spread));
@@ -398,7 +482,9 @@ if (!hasTrueCeilingPath) captainScore = Math.min(captainScore, 51);
 if (valueOnlyCaptain) captainScore = Math.min(captainScore, 51);
 captainScore=clamp(captainScore);
 const flexScore=clamp(0.34*r.value_n+0.28*r.projection_n+0.24*(100-bustRiskScore)+0.1*r.salary_n+0.04*r.minutes_n-settings.flexPenalty);
+const bustRiskScoreRounded = round(bustRiskScore);
 const bustRisk=bustRiskScore>=67?"High":bustRiskScore>=40?"Medium":"Low";
+const exactContestScore=calculateExactContestScore({ profileKind, confidence, upsideScore, leverageScore, boomScore, bustRiskScore, projectionN:r.projection_n, floorN:r.floor_n, minutesN:r.minutes_n, valueN:r.value_n, salaryN:r.salary_n, ownershipN:r.ownership_n, environmentScore, volatilityN:r.volatility_n, topHeavyScore: settings.topHeavyPayoutScore });
 const lowMinuteRisk = r.minutes > 0 && r.minutes < 10;
 const lowProjectionRisk = r.projection > 0 && r.projection < 4;
 const starterSignal = inferredStarter || r.minutes >= 18 || r.projection_n >= 58 || r.salary_n >= 55;
@@ -417,11 +503,13 @@ const role = isShowdown
 const tier = isShowdown ? captainTier : classicTier;
 const contestFit = isShowdown ? (captainScore>flexScore?"Showdown":"3-Max") : normalizeContestLabel(contestType);
 const captainBonus = (topCeilingPlayer ? 15 : top5CeilingPlayer ? 8 : 0) + (strongLevCeil ? 8 : 0) + (uniqueBuild ? 5 : 0) - ((lowUpsidePath && !top5CeilingPlayer) ? 8 : 0) - ((cheapSaverOnly && !top5CeilingPlayer) ? 5 : 0) - ((weakCeilingBust && !top5CeilingPlayer) ? 6 : 0);
-const explanation = isShowdown
+const baseExplanation = isShowdown
   ? buildShowdownExplanation({ captainTier, captainScore: round(captainScore), ceilingScore: round(r.ceiling_n), leverageScore: round(leverageScore), lowUpsidePath, cheapSaverOnly, weakCeilingBust, top8CaptainSignal, strongRoleSignal, valueOnlyCaptain, upsideScore: round(upsideScore) })
   : buildClassicExplanation({ tier: classicTier, role, confidence: round(confidence), upsideScore: round(upsideScore), leverageScore: round(leverageScore), bustRisk, valueScore: round(r.value_n) });
-return {...r, slateFormat: isShowdown ? "showdown" : "classic", confidenceRating:round(confidence), contestAggression: settings.aggression, environmentScore: round(environmentScore), boomScore:round(boomScore), bustRisk, ownershipLeverageScore:round(leverageScore), captainScore: isShowdown ? round(captainScore) : 0, captainTier, flexScore: isShowdown ? round(flexScore) : 0, topValueTag:r.value_n>75?"Yes":"No", bestRole:role, tier, contestFit, nonViablePunt, captainBonus: isShowdown ? round(captainBonus) : 0, classicScore: round(0.38*confidence+0.32*upsideScore+0.18*leverageScore+0.12*r.value_n), explanation};});}
-function toPublicResult(r){return { playerName:r.name, team:r.team, position:r.position, salary:r.salary, slateFormat:r.slateFormat, bestRole:r.bestRole, contestFit:r.contestFit, tier:r.tier, captainTier:r.captainTier, confidenceRating:r.confidenceRating, environmentScore:r.environmentScore, boomScore:r.boomScore, bustRisk:r.bustRisk, ownershipLeverageScore:r.ownershipLeverageScore, captainScore:r.captainScore, flexScore:r.flexScore, classicScore:r.classicScore, topValueTag:r.topValueTag, explanation:r.explanation };}
+const exactContestExplanation = buildExactContestExplanation({ profileKind, exactContestScore, confidence, leverageScore, upsideScore, bustRiskScore, ownershipN:r.ownership_n });
+const explanation = `${baseExplanation} ${exactContestExplanation}`;
+return {...r, slateFormat: isShowdown ? "showdown" : "classic", confidenceRating:round(confidence), contestAggression: settings.aggression, environmentScore: round(environmentScore), boomScore:round(boomScore), bustRisk, bustRiskLabel:bustRisk, bustRiskScore:bustRiskScoreRounded, ownershipLeverageScore:round(leverageScore), exactContestScore, exactContestExplanation, captainScore: isShowdown ? round(captainScore) : 0, captainTier, flexScore: isShowdown ? round(flexScore) : 0, topValueTag:r.value_n>75?"Yes":"No", bestRole:role, tier, contestFit, nonViablePunt, captainBonus: isShowdown ? round(captainBonus) : 0, classicScore: round(0.38*confidence+0.32*upsideScore+0.18*leverageScore+0.12*r.value_n), explanation};});}
+function toPublicResult(r){return { playerName:r.name, team:r.team, position:r.position, salary:r.salary, slateFormat:r.slateFormat, bestRole:r.bestRole, contestFit:r.contestFit, tier:r.tier, captainTier:r.captainTier, confidenceRating:r.confidenceRating, environmentScore:r.environmentScore, boomScore:r.boomScore, bustRisk:r.bustRisk, bustRiskLabel:r.bustRiskLabel, bustRiskScore:r.bustRiskScore, ownershipLeverageScore:r.ownershipLeverageScore, exactContestScore:r.exactContestScore, exactContestExplanation:r.exactContestExplanation, captainScore:r.captainScore, flexScore:r.flexScore, classicScore:r.classicScore, topValueTag:r.topValueTag, explanation:r.explanation };}
 const clamp=(n)=>Math.max(1,Math.min(100,n)); const round=(n)=>Math.round(clamp(n));
 function buildShowdownExplanation({ captainTier, captainScore, ceilingScore, leverageScore, lowUpsidePath, cheapSaverOnly, weakCeilingBust, top8CaptainSignal, strongRoleSignal, valueOnlyCaptain, upsideScore }){ if(captainTier==="Elite Captain") return "Elite ceiling captain: top-tier raw upside with enough role security to justify heavy multiplier exposure."; if(captainTier==="Strong Captain" && leverageScore>=62) return "Leverage captain with real upside: low ownership is supported by true boom/ceiling pathways."; if(captainTier==="Strong Captain") return "Strong captain profile: high-end ceiling and stable role make this more than a flex-only build."; if(captainTier==="Viable Captain" && top8CaptainSignal) return `Viable captain via true-ceiling path (top-8 signal) with playable upside (${upsideScore}).`; if(captainTier==="Viable Captain" && strongRoleSignal) return "Viable captain from strong minutes/role floor, but below elite raw ceiling outcomes."; if(valueOnlyCaptain||cheapSaverOnly) return "Salary saver profile: useful for flex construction, but capped at thin captain without top-tier ceiling."; if(lowUpsidePath||weakCeilingBust) return "Avoid captain: minutes/projection/ceiling risk is too fragile for a winning multiplier build."; return `Thin captain only: modest ceiling (${ceilingScore}) and leverage (${leverageScore}) keep this as a secondary exposure.`; }
 function getCaptainTier(captainScore, top2RawSignal=false){if(captainScore>=75) return "Elite Captain"; if(captainScore>=58 || (top2RawSignal && captainScore>=58)) return "Strong Captain"; if(captainScore>=48) return "Viable Captain"; if(captainScore>=35) return "Thin Captain"; return "Avoid Captain";}
@@ -442,6 +530,86 @@ function buildClassicExplanation({ tier, role, confidence, upsideScore, leverage
   if (role === "Value") return `Classic value option: value score (${valueScore}) helps make salary work, but keep exposure tied to lineup construction.`;
   return `Classic pool option: viable secondary exposure with confidence ${confidence}, upside ${upsideScore}, and leverage ${leverageScore}.`;
 }
+
+
+function calculateExactContestScore({ profileKind, confidence, upsideScore, leverageScore, boomScore, bustRiskScore, projectionN, floorN, minutesN, valueN, salaryN, ownershipN, environmentScore, volatilityN, topHeavyScore }) {
+  const fakeChalkPenalty = ownershipN >= 74 && leverageScore < 42 ? 12 : ownershipN >= 62 && leverageScore < 35 ? 7 : 0;
+  const deadPuntPenalty = projectionN < 25 && minutesN < 25 && upsideScore < 42 ? 10 : 0;
+  const duplicationDiscount = Math.max(0, (ownershipN - 58) * ((topHeavyScore || 0) / 100) * 0.28);
+  let score;
+  switch (profileKind) {
+    case "cash":
+      score = 0.34 * confidence + 0.22 * projectionN + 0.18 * floorN + 0.12 * minutesN + 0.1 * valueN + 0.04 * environmentScore - 0.28 * bustRiskScore - 0.08 * (100 - volatilityN);
+      break;
+    case "single_entry":
+    case "small_field":
+      score = 0.31 * confidence + 0.2 * projectionN + 0.16 * floorN + 0.15 * upsideScore + 0.13 * leverageScore + 0.05 * valueN - 0.24 * bustRiskScore - fakeChalkPenalty;
+      break;
+    case "large_field_gpp":
+      score = 0.29 * upsideScore + 0.24 * boomScore + 0.23 * leverageScore + 0.1 * confidence + 0.07 * environmentScore + 0.07 * salaryN - 0.12 * bustRiskScore - duplicationDiscount - deadPuntPenalty;
+      break;
+    case "winner_take_all":
+      score = 0.34 * upsideScore + 0.27 * leverageScore + 0.2 * boomScore + 0.08 * environmentScore + 0.06 * salaryN + 0.05 * confidence - 0.08 * bustRiskScore - duplicationDiscount - deadPuntPenalty;
+      break;
+    case "three_max":
+      score = 0.25 * confidence + 0.24 * upsideScore + 0.18 * leverageScore + 0.16 * boomScore + 0.09 * projectionN + 0.08 * valueN - 0.16 * bustRiskScore - fakeChalkPenalty * 0.5;
+      break;
+    default:
+      score = 0.24 * confidence + 0.24 * upsideScore + 0.18 * leverageScore + 0.14 * boomScore + 0.1 * projectionN + 0.1 * valueN - 0.18 * bustRiskScore - fakeChalkPenalty * 0.4;
+  }
+  return round(score);
+}
+function buildExactContestExplanation({ profileKind, exactContestScore, confidence, leverageScore, upsideScore, bustRiskScore, ownershipN }) {
+  const label = profileKind.replace(/_/g, " ");
+  if (profileKind === "cash") return `Exact contest fit (${exactContestScore}) leans on floor/projection; bust risk is ${round(bustRiskScore)}.`;
+  if (["single_entry", "small_field"].includes(profileKind)) return `Exact contest fit (${exactContestScore}) balances projection/floor (${round(confidence)}) with usable leverage (${round(leverageScore)}).`;
+  if (["large_field_gpp", "winner_take_all"].includes(profileKind)) return `Exact contest fit (${exactContestScore}) emphasizes ceiling (${round(upsideScore)}) and leverage (${round(leverageScore)}) against ownership (${round(ownershipN)}).`;
+  return `Exact ${label} fit score is ${exactContestScore}, blending safety, upside, leverage, and bust risk.`;
+}
+function buildRecommendations(scoredRows, slateType) {
+  const pool = (scoredRows || []).filter((row) => !row.nonViablePunt);
+  if (!pool.length) return {};
+  const pick = (key, direction = "desc", reason = "") => {
+    const ranked = [...pool].sort((a, b) => direction === "asc" ? (a[key] || 0) - (b[key] || 0) : (b[key] || 0) - (a[key] || 0));
+    return recommendationFromPlayer(ranked[0], reason || `Best ${key} among viable players.`);
+  };
+  const fadePool = [...(scoredRows || [])].sort((a, b) => ((b.bustRiskScore || 0) + (b.ownership || 0) * 0.5) - ((a.bustRiskScore || 0) + (a.ownership || 0) * 0.5));
+  const isShowdown = String(slateType || "").toLowerCase() === "showdown";
+  return {
+    bestOverallPlay: pick(isShowdown ? "captainScore" : "classicScore", "desc", isShowdown ? "Top overall showdown multiplier score." : "Top overall classic score."),
+    bestExactContestPlay: pick("exactContestScore", "desc", "Top score for the exact contest profile."),
+    bestRawProjection: pick("projection", "desc", "Highest raw projection among viable players."),
+    bestCeiling: pick("ceiling", "desc", "Highest ceiling among viable players."),
+    bestLeveragePlay: pick("ownershipLeverageScore", "desc", "Strongest leverage score among viable players."),
+    bestSingleEntryPlay: recommendationFromPlayer([...pool].sort((a, b) => singleEntryScore(b) - singleEntryScore(a))[0], "Best blend of projection, floor, leverage, and low bust risk for single-entry play."),
+    bestCashPlay: recommendationFromPlayer([...pool].sort((a, b) => cashScore(b) - cashScore(a))[0], "Best projection/floor/value blend for cash-style contests."),
+    bestLargeFieldGppPlay: recommendationFromPlayer([...pool].sort((a, b) => largeFieldScore(b) - largeFieldScore(a))[0], "Best ceiling/leverage blend for large-field GPPs."),
+    bestCaptain: isShowdown ? pick("captainScore", "desc", "Best captain score among viable showdown players.") : null,
+    bestFlex: isShowdown ? pick("flexScore", "desc", "Best flex score among viable showdown players.") : null,
+    bestFade: recommendationFromPlayer(fadePool[0], "Highest underweight/fade signal from bust risk and ownership pressure.")
+  };
+}
+function recommendationFromPlayer(player, reasoning) {
+  if (!player) return null;
+  return {
+    playerName: player.name,
+    team: player.team,
+    position: player.position,
+    salary: player.salary,
+    exactContestScore: player.exactContestScore,
+    classicScore: player.classicScore,
+    captainScore: player.captainScore,
+    flexScore: player.flexScore,
+    boomScore: player.boomScore,
+    bustRiskLabel: player.bustRiskLabel,
+    bustRiskScore: player.bustRiskScore,
+    ownershipLeverageScore: player.ownershipLeverageScore,
+    reasoning
+  };
+}
+function singleEntryScore(player) { return (player.confidenceRating || 0) * 0.34 + (player.classicScore || 0) * 0.22 + (player.ownershipLeverageScore || 0) * 0.16 + (player.boomScore || 0) * 0.12 - (player.bustRiskScore || 0) * 0.2; }
+function cashScore(player) { return (player.confidenceRating || 0) * 0.38 + (player.projection_n || 0) * 0.2 + (player.floor_n || 0) * 0.18 + (player.value_n || 0) * 0.14 - (player.bustRiskScore || 0) * 0.22; }
+function largeFieldScore(player) { return (player.boomScore || 0) * 0.28 + (player.ownershipLeverageScore || 0) * 0.28 + (player.classicScore || 0) * 0.16 + (player.ceiling_n || 0) * 0.16 - (player.bustRiskScore || 0) * 0.08; }
 
 function toNullableNumber(v){const n=Number(v); return Number.isFinite(n)?n:null;}
 function recommendBestPlay(scoredRows, slateType) {
@@ -474,7 +642,7 @@ function recommendBestPlay(scoredRows, slateType) {
       : "Top classic play by projection among viable players, with tie-breakers on ceiling and leverage."
   };
 }
-function buildPrivateLineups(scoredRows, { sport, platform, slateType, lineupsPlaying, maxEntries }) {
+function buildPrivateLineups(scoredRows, { sport, platform, slateType, lineupsPlaying, maxEntries, contestProfile }) {
   const lineupCount = Math.max(1, Math.min(20, toNullableNumber(lineupsPlaying) || toNullableNumber(maxEntries) || 6));
   const salaryCap = salaryCapForPlatform(platform);
   const pool = [...(scoredRows || [])]
@@ -482,20 +650,20 @@ function buildPrivateLineups(scoredRows, { sport, platform, slateType, lineupsPl
     .sort((a, b) => lineupPlayerScore(b, slateType) - lineupPlayerScore(a, slateType))
     .slice(0, slateType === "showdown" ? 18 : 24);
 
-  if (slateType === "showdown") return buildShowdownLineups(pool, { lineupCount, salaryCap });
-  return buildClassicLineups(pool, { sport, lineupCount, salaryCap });
+  if (slateType === "showdown") return buildShowdownLineups(pool, { lineupCount, salaryCap, contestProfile });
+  return buildClassicLineups(pool, { sport, lineupCount, salaryCap, contestProfile });
 }
-function buildClassicLineups(pool, { sport, lineupCount, salaryCap }) {
+function buildClassicLineups(pool, { sport, lineupCount, salaryCap, contestProfile }) {
   const rosterSize = ["mma", "golf", "nascar"].includes(sport) ? 6 : Math.min(6, pool.length);
   const candidates = [];
   forEachCombo(pool, rosterSize, (players) => {
     const salary = sumBy(players, "salary");
     if (salary > salaryCap) return;
-    candidates.push(toLineup(players.map((player, index) => ({ ...lineupPublicPlayer(player), slot: classicSlotForSport(sport, index) })), salary, salaryCap, "Classic Build"));
+    candidates.push(toLineup(players.map((player, index) => ({ ...lineupPublicPlayer(player), slot: classicSlotForSport(sport, index) })), salary, salaryCap, lineupArchetype(contestProfile, "classic")));
   });
   return rankLineups(candidates, lineupCount);
 }
-function buildShowdownLineups(pool, { lineupCount, salaryCap }) {
+function buildShowdownLineups(pool, { lineupCount, salaryCap, contestProfile }) {
   const candidates = [];
   for (const captain of pool.slice(0, 12)) {
     const flexPool = pool.filter((player) => player.id !== captain.id);
@@ -506,7 +674,7 @@ function buildShowdownLineups(pool, { lineupCount, salaryCap }) {
         { ...lineupPublicPlayer(captain), slot: "CPT", salary: Math.round(captain.salary * 1.5), projection: roundMetric(captain.projection * 1.5) },
         ...flexPlayers.map((player, index) => ({ ...lineupPublicPlayer(player), slot: `FLEX${index + 1}` }))
       ];
-      candidates.push(toLineup(players, salary, salaryCap, "Showdown Build"));
+      candidates.push(toLineup(players, salary, salaryCap, lineupArchetype(contestProfile, "showdown")));
     });
   }
   return rankLineups(candidates, lineupCount);
@@ -535,9 +703,9 @@ function toLineup(players, salary, salaryCap, archetype) {
     volatility_rating: roundMetric(avgBy(players, "boomScore")),
     objective_score: objective,
     archetype,
-    archetype_reason: archetype === "Classic Build" ? "Six-fighter classic lineup under the salary cap." : "Captain plus five flex lineup under the salary cap.",
+    archetype_reason: lineupArchetypeReason(archetype),
     duplication_risk: salaryCap - salary < 500 ? "Medium" : "Low",
-    stack_type: archetype === "Classic Build" ? "Classic" : "Showdown",
+    stack_type: archetype.includes("Showdown") ? "Showdown" : "Classic",
     players
   };
 }
@@ -563,8 +731,26 @@ function classicSlotForSport(sport, index) {
   return `UTIL${index + 1}`;
 }
 function lineupPlayerScore(player, slateType) {
-  if (slateType === "showdown") return (player.captainScore || 0) * 0.35 + (player.flexScore || 0) * 0.25 + player.boomScore * 0.2 + player.ownershipLeverageScore * 0.2;
-  return (player.classicScore || 0) * 0.45 + player.projection * 0.25 + player.boomScore * 0.15 + player.ownershipLeverageScore * 0.15;
+  if (slateType === "showdown") return (player.captainScore || 0) * 0.32 + (player.flexScore || 0) * 0.22 + (player.exactContestScore || 0) * 0.2 + player.boomScore * 0.14 + player.ownershipLeverageScore * 0.12;
+  return (player.exactContestScore || 0) * 0.34 + (player.classicScore || 0) * 0.28 + player.projection * 0.16 + player.boomScore * 0.11 + player.ownershipLeverageScore * 0.11;
+}
+function lineupArchetype(profile, slateFormat) {
+  const kind = contestProfileKind(profile);
+  if (slateFormat === "showdown") return kind === "large_field_gpp" || kind === "winner_take_all" ? "Showdown Duplication Avoidance" : "Showdown Balanced";
+  if (kind === "cash") return "Cash Floor Build";
+  if (kind === "single_entry" || kind === "small_field") return "Single-entry Balanced";
+  if (kind === "large_field_gpp") return "Large-field Leverage";
+  if (kind === "winner_take_all") return "Winner-take-all Ceiling";
+  return "Classic Build";
+}
+function lineupArchetypeReason(archetype) {
+  if (archetype === "Cash Floor Build") return "Prioritizes projection, floor, and lower bust risk for cash-style payout structures.";
+  if (archetype === "Single-entry Balanced") return "Balances projection, stability, and moderate leverage for smaller-field entries.";
+  if (archetype === "Large-field Leverage") return "Pushes ceiling and leverage to reduce duplicated chalk in top-heavy fields.";
+  if (archetype === "Winner-take-all Ceiling") return "Aggressive ceiling/leverage construction for first-place-heavy contests.";
+  if (archetype === "Showdown Duplication Avoidance") return "Showdown captain/flex build tilted toward ceiling, leverage, and lower duplication.";
+  if (archetype === "Showdown Balanced") return "Captain plus five flex lineup balanced for the exact contest profile.";
+  return "Classic lineup under the salary cap.";
 }
 function forEachCombo(items, size, visit, start = 0, combo = []) {
   if (combo.length === size) return visit([...combo]);
@@ -579,16 +765,18 @@ function sumBy(rows, key) { return rows.reduce((total, row) => total + (Number(r
 function avgBy(rows, key) { return rows.length ? sumBy(rows, key) / rows.length : 0; }
 function roundMetric(value) { return Number((Number(value) || 0).toFixed(2)); }
 
-function buildContestSettings({ maxEntries, lineupsPlaying, pctPaidToFirst }) {
-  const max = Math.max(1, toNullableNumber(maxEntries) || 1);
-  const lineups = Math.max(1, toNullableNumber(lineupsPlaying) || 1);
-  const firstPct = Math.max(0, toNullableNumber(pctPaidToFirst) || 0);
+function buildContestSettings({ maxEntries, lineupsPlaying, pctPaidToFirst, contestProfile }) {
+  const max = Math.max(1, toNullableNumber(contestProfile?.maxEntries ?? maxEntries) || 1);
+  const lineups = Math.max(1, toNullableNumber(contestProfile?.yourEntries ?? lineupsPlaying) || 1);
+  const firstPct = Math.max(0, toNullableNumber(contestProfile?.percentPaidToFirst ?? pctPaidToFirst) || 0);
   const entryShare = Math.min(1, lineups / max);
-  const topHeavy = Math.max(0, Math.min(1, (firstPct - 12) / 20));
+  const profileTopHeavy = toNullableNumber(contestProfile?.topHeavyPayoutScore);
+  const topHeavy = profileTopHeavy ? profileTopHeavy / 100 : Math.max(0, Math.min(1, (firstPct - 12) / 20));
   const underEntered = 1 - entryShare;
   const aggression = Math.max(0, Math.min(1, 0.6 * topHeavy + 0.4 * underEntered));
   return {
     aggression: Math.round(aggression * 100),
+    topHeavyPayoutScore: Math.round(topHeavy * 100),
     leverageBoost: 1 + aggression * 0.2,
     captainBoost: aggression * 5,
     flexPenalty: aggression * 4
