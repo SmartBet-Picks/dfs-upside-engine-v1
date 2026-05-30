@@ -501,9 +501,11 @@ const fade= nonViablePunt || (bustRiskScore>70 && boomScore<50 && !environmentFl
 const top2RawSignal = top2Projection.has(idx) || top2Ceiling.has(idx);
 const isShowdown = slateType === "showdown";
 const captainTier = isShowdown ? getCaptainTier(captainScore, top2RawSignal) : "Classic";
+const protectedUpsideCaptain = isShowdown && captainTier === "Strong Captain" && upsideScore >= 58 && (top8CaptainSignal || strongRoleSignal);
+const effectiveFade = fade && !protectedUpsideCaptain;
 const classicTier = getClassicTier(confidence, upsideScore, leverageScore, bustRiskScore);
 const role = isShowdown
-  ? (fade?"Fade": captainScore>=60?"Captain": flexScore>74?"Flex": confidence>80?"Core": r.salary_n>70&&r.value_n>60?"Value": leverageScore>72?"Leverage":"Flex")
+  ? (effectiveFade?"Fade": captainScore>=58?"Captain": flexScore>74?"Flex": confidence>80?"Core": r.salary_n>70&&r.value_n>60?"Value": leverageScore>72?"Leverage":"Flex")
   : (fade?"Fade": confidence>=82?"Core": upsideScore>=72?"Upside": leverageScore>=72?"Leverage": r.value_n>=70?"Value":"Pool");
 const tier = isShowdown ? captainTier : classicTier;
 const contestFit = isShowdown ? (captainScore>flexScore?"Showdown":"3-Max") : normalizeContestLabel(contestType);
