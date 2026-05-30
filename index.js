@@ -204,6 +204,9 @@ app.post("/api/optimize", asyncHandler(async (req, res) => {
     contest_max_entries: entryPortfolio.contest_max_entries,
     field_size: entryPortfolio.field_size,
     entry_profile: entryPortfolio.entry_profile,
+    portfolio_constraints: entryPortfolio.portfolio_constraints,
+    constraint_notes: entryPortfolio.constraint_notes,
+    exposure_report: entryPortfolio.exposure_report,
     recommended_submissions: entryPortfolio.recommended,
     alternates: entryPortfolio.alternates,
     download_url: `/api/lineups/${exportId}.csv`,
@@ -501,7 +504,31 @@ async function fetchPlayers({ sport, slate_type, site, date, limit = 50, filters
 
   const { data, error } = await query;
   if (error) throw new Error(error.message);
-  return data || [];
+  return (data || []).map(withCaptainTierLabel);
+}
+
+function withCaptainTierLabel(player) {
+  if (String(player.slate_type || "").toLowerCase() !== "showdown") return player;
+  const captainTier = captainTierForPlayer(player);
+  return {
+    ...player,
+    captain_tier: captainTier,
+    captainTier
+  };
+}
+
+function captainTierForPlayer(player) {
+  if (String(player.slate_type || "").toLowerCase() !== "showdown") return player.captain_tier || null;
+  return player.captain_tier || deriveCaptainTier(player.showdown_captain_score);
+}
+
+function deriveCaptainTier(captainScore) {
+  const score = Number(captainScore || 0);
+  if (score >= 75) return "Elite Captain";
+  if (score >= 58) return "Strong Captain";
+  if (score >= 48) return "Viable Captain";
+  if (score >= 35) return "Thin Captain";
+  return "Avoid Captain";
 }
 
 async function resolveSlateIds({ supabase, sport, slate_type, site, date }) {
@@ -602,6 +629,7 @@ function toDbPlayer(player) {
     slate_breaker_tag: player.slate_breaker_tag,
     showdown_captain_score: player.showdown_captain_score,
     showdown_flex_score: player.showdown_flex_score,
+    captain_tier: captainTierForPlayer(player),
     captain_ownership_risk: player.captain_ownership_risk,
     duplication_risk: player.duplication_risk,
     game_script_fit: player.game_script_fit
@@ -690,6 +718,7 @@ function toProjectionFeedRow(player, generatedAt) {
     slate_breaker: Boolean(player.slate_breaker_tag),
     showdown_captain_score: Number(player.showdown_captain_score || 0),
     showdown_flex_score: Number(player.showdown_flex_score || 0),
+    captain_tier: captainTierForPlayer(player),
     confidence_score: projectionConfidence(player),
     model_version: "internal-dfs-v1",
     generated_at: generatedAt
